@@ -1,0 +1,373 @@
+\documentclass[UTF8,a4paper,12pt]{ctexart}
+
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{array}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.6cm,bottom=2.6cm}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
+\setlist{itemsep=0.2em,topsep=0.4em}
+
+\title{基于 LLM 辅助与机器学习的 Lorenz 混沌系统短期状态预测研究}
+\author{小组成员：待填写\\课程名称：待填写}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Lorenz 系统是非线性动力系统和混沌理论中的经典模型。虽然该系统由确定性微分方程控制，但其轨迹对初始条件高度敏感，体现出典型的混沌特征。本文以 Lorenz 系统为研究对象，利用 Python 数值模拟生成时间序列数据，并将其转化为监督学习回归问题：根据当前时刻的状态变量预测下一时刻的系统状态。研究过程中使用线性回归作为 Baseline Model，并使用随机森林回归模型作为更复杂的非线性预测模型。实验流程包括数据生成、缺失值检查、标准化预处理、探索性数据分析、相关性热力图绘制、模型训练、RMSE、MAE、$R^2$ 指标评价，以及真实值与预测值散点图可视化。本文旨在展示机器学习方法在数学建模与科学预测问题中的应用价值，并反思 LLM 在选题、建模、代码生成和报告写作中的辅助作用。
+\end{abstract}
+
+\noindent\textbf{关键词：} Lorenz 系统；混沌；机器学习；随机森林；回归预测；AI4SCI；LLM 辅助建模
+
+\section{引言}
+
+科学预测是理工科研究中的重要问题。许多自然系统虽然由确定性方程描述，但由于非线性作用和初值敏感性，其长期行为可能表现出复杂甚至混沌的特征。传统数学方法通常从方程结构出发分析系统性质，而机器学习方法则可以从数据中学习输入变量与输出变量之间的映射关系。因此，将机器学习用于非线性动力系统预测，是数学建模与 AI4SCI 交叉方向中的一个典型问题。
+
+Lorenz 系统最初来源于大气对流问题，是混沌理论中的经典模型。该系统具有著名的“蝴蝶形”吸引子，其轨迹在相空间中呈现复杂结构。虽然 Lorenz 系统的演化由确定的微分方程给出，但由于系统对初始条件高度敏感，长期预测极具挑战。本文关注的问题不是长期精确预测，而是研究机器学习模型是否能够学习 Lorenz 系统的短期演化规律。
+
+本文的研究问题可以表述为：给定 Lorenz 系统在时刻 $t$ 的状态变量 $x(t),y(t),z(t)$，预测下一时刻 $x(t+\Delta t)$ 的数值。该问题属于连续数值回归任务，适合使用 RMSE、MAE 和 $R^2$ 等指标进行评价。通过比较线性回归与随机森林模型的预测效果，本文尝试说明非线性模型在混沌系统短期预测中的优势。
+
+\section{数学背景}
+
+\subsection{Lorenz 系统方程}
+
+Lorenz 系统由以下三个耦合的常微分方程组成：
+
+\begin{equation}
+\frac{dx}{dt}=\sigma(y-x),
+\end{equation}
+
+\begin{equation}
+\frac{dy}{dt}=x(\rho-z)-y,
+\end{equation}
+
+\begin{equation}
+\frac{dz}{dt}=xy-\beta z.
+\end{equation}
+
+其中，$x,y,z$ 表示系统状态变量，$\sigma,\rho,\beta$ 为系统参数。本文采用 Lorenz 系统中常见的参数设置：
+
+\begin{equation}
+\sigma=10,\quad \rho=28,\quad \beta=\frac{8}{3}.
+\end{equation}
+
+在这一参数组合下，Lorenz 系统会呈现典型的混沌行为。系统轨迹并不会收敛到单一平衡点，而是在三维相空间中形成复杂的吸引子结构。
+
+\subsection{混沌系统的预测特点}
+
+混沌系统具有两个看似矛盾的特点：一方面，它由确定性方程控制；另一方面，它对初始条件极其敏感。若两个初始状态只存在极小差异，经过一段时间演化后，系统轨迹可能发生显著分离。这种现象常被称为“蝴蝶效应”。
+
+因此，混沌系统的短期预测和长期预测具有明显区别。短时间尺度下，系统状态之间仍然存在可学习的局部规律；但随着预测时间跨度增大，微小误差可能被非线性动力学不断放大，导致长期预测困难。本文主要研究短期一步预测，即预测 $x(t+\Delta t)$。
+
+\section{数据集构建}
+
+\subsection{数据来源}
+
+本文不使用外部下载数据集，而是基于 Lorenz 微分方程进行数值模拟，生成实验所需数据。该方式具有两个优点：首先，数据来源具有明确数学依据，不是任意构造的随机数据；其次，数据规模、时间步长和初始条件可以根据实验需要灵活控制。
+
+数据生成的基本流程如下：
+
+\begin{enumerate}
+    \item 设定 Lorenz 系统参数 $\sigma=10,\rho=28,\beta=8/3$；
+    \item 设定初始状态，例如 $(x_0,y_0,z_0)=(1,1,1)$；
+    \item 使用 Python 中的数值积分方法求解微分方程；
+    \item 得到连续时间序列 $x(t),y(t),z(t)$；
+    \item 将时间序列转化为监督学习数据表。
+\end{enumerate}
+
+\subsection{监督学习数据表}
+
+本文将 Lorenz 轨迹转换为如下形式的回归数据集：
+
+\begin{table}[H]
+\centering
+\caption{监督学习数据表结构示例}
+\begin{tabular}{cccc}
+\toprule
+$x(t)$ & $y(t)$ & $z(t)$ & $x(t+\Delta t)$ \\
+\midrule
+$x_1$ & $y_1$ & $z_1$ & $x_2$ \\
+$x_2$ & $y_2$ & $z_2$ & $x_3$ \\
+$x_3$ & $y_3$ & $z_3$ & $x_4$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+其中，输入变量为当前时刻的三维状态：
+
+\begin{equation}
+\mathbf{X}_t = [x(t),y(t),z(t)],
+\end{equation}
+
+预测目标为下一时刻的 $x$ 分量：
+
+\begin{equation}
+y_t = x(t+\Delta t).
+\end{equation}
+
+在后续实验中，可进一步扩展为多步历史窗口输入，例如使用 $t-2,t-1,t$ 三个时刻的状态共同预测下一时刻状态。
+
+\section{探索性数据分析}
+
+\subsection{数据统计描述}
+
+在建模前，需要对生成的数据进行基本统计分析，包括样本数量、变量均值、标准差、最小值、最大值和分位数等。通过统计描述可以初步了解 Lorenz 系统状态变量的取值范围和分布特征。
+
+实验运行后，本节将补充数据统计表。表格格式如下：
+
+\begin{table}[H]
+\centering
+\caption{变量统计描述（待实验结果填入）}
+\begin{tabular}{lrrrr}
+\toprule
+变量 & 均值 & 标准差 & 最小值 & 最大值 \\
+\midrule
+$x(t)$ & 待填 & 待填 & 待填 & 待填 \\
+$y(t)$ & 待填 & 待填 & 待填 & 待填 \\
+$z(t)$ & 待填 & 待填 & 待填 & 待填 \\
+$x(t+\Delta t)$ & 待填 & 待填 & 待填 & 待填 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Lorenz 吸引子可视化}
+
+Lorenz 系统最典型的可视化方式是三维相空间轨迹图。该图能够展示系统轨迹在 $(x,y,z)$ 空间中的演化形态，并直观呈现混沌吸引子的结构。
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入 Lorenz 三维吸引子图：\texttt{figures/lorenz\_attractor.png}
+\end{minipage}}
+\caption{Lorenz 系统三维吸引子轨迹图}
+\end{figure}
+
+\subsection{相关性热力图}
+
+课程要求中明确需要绘制相关性热力图。本文将计算 $x(t),y(t),z(t),x(t+\Delta t)$ 之间的 Pearson 相关系数，并使用热力图进行展示。相关系数定义为：
+
+\begin{equation}
+r_{XY}=\frac{\sum_{i=1}^{n}(X_i-\bar{X})(Y_i-\bar{Y})}{\sqrt{\sum_{i=1}^{n}(X_i-\bar{X})^2}\sqrt{\sum_{i=1}^{n}(Y_i-\bar{Y})^2}}.
+\end{equation}
+
+相关性热力图有助于观察不同状态变量与预测目标之间的线性相关程度。但需要注意，Lorenz 系统中存在明显非线性关系，因此相关系数不能完全反映变量之间的复杂依赖。
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入相关性热力图：\texttt{figures/correlation\_heatmap.png}
+\end{minipage}}
+\caption{Lorenz 数据集变量相关性热力图}
+\end{figure}
+
+\section{数据预处理}
+
+\subsection{缺失值检查与处理}
+
+尽管本文数据由数值模拟生成，理论上不会出现缺失值，但为了满足完整的数据预处理流程，仍需要对数据集进行缺失值检查。若发现缺失值，可以使用均值或中位数进行填充。缺失值检查可以表示为：
+
+\begin{equation}
+N_{missing}(j)=\sum_{i=1}^{n} I(x_{ij}\ \text{is missing}),
+\end{equation}
+
+其中 $I(\cdot)$ 为指示函数。实验代码将输出每一列的缺失值数量。若所有变量缺失值数量均为 0，则在报告中说明“数据经检查无缺失值，因此无需填充”。
+
+\subsection{训练集与测试集划分}
+
+为了评估模型泛化能力，本文将数据集划分为训练集和测试集。训练集用于模型学习，测试集用于评价模型在未见数据上的预测能力。考虑到 Lorenz 数据具有时间序列性质，可以采用前一部分时间点作为训练集，后一部分时间点作为测试集，以避免随机打乱造成时间信息泄漏。若课程对普通回归流程要求更强，也可以使用固定随机种子的随机划分。
+
+\subsection{StandardScaler 标准化}
+
+课程要求中需要使用 StandardScaler 对数据进行标准化。对于每个输入特征 $x$，标准化公式为：
+
+\begin{equation}
+x' = \frac{x-\mu}{\sigma},
+\end{equation}
+
+其中，$\mu$ 为训练集均值，$\sigma$ 为训练集标准差。标准化可以使不同变量处于相近尺度，尤其有利于线性回归、支持向量机和神经网络等模型。实际操作中，应只在训练集上计算 $\mu$ 和 $\sigma$，再将同样的变换应用于测试集，以避免数据泄漏。
+
+\section{模型方法}
+
+\subsection{Baseline Model：线性回归}
+
+本文首先使用线性回归作为 Baseline Model。线性回归假设预测目标可以由输入变量的线性组合表示：
+
+\begin{equation}
+\hat{x}(t+\Delta t)=w_1x(t)+w_2y(t)+w_3z(t)+b.
+\end{equation}
+
+其中，$w_1,w_2,w_3$ 为模型权重，$b$ 为截距。线性回归模型简单、可解释性强，适合作为评价复杂模型是否真正带来改进的基准。
+
+然而，Lorenz 系统方程中包含 $xy$ 和 $xz$ 等非线性项，因此线性回归难以完整表达系统演化规律。若复杂模型明显优于线性回归，则说明非线性建模能力对于该问题具有重要作用。
+
+\subsection{主模型：随机森林回归}
+
+随机森林回归是一种基于多个决策树的集成学习方法。它通过对训练数据进行多次采样，并训练多棵决策树，最后对多棵树的预测结果取平均，从而降低单棵决策树的过拟合风险。
+
+随机森林适合本文问题的原因包括：
+
+\begin{enumerate}
+    \item 能够处理非线性关系；
+    \item 对特征尺度不敏感，但本文仍按课程要求进行标准化；
+    \item 不需要 GPU，计算成本较低；
+    \item 可通过特征重要性分析解释变量贡献。
+\end{enumerate}
+
+\subsection{可选模型：神经网络回归}
+
+若需要进一步展示更复杂模型，可以使用多层感知机回归模型，即 MLPRegressor。神经网络通过隐藏层和非线性激活函数逼近复杂函数关系，理论上可以学习 Lorenz 系统中的非线性映射。但由于神经网络对超参数较敏感，本文将其作为可选扩展，而不作为唯一主模型。
+
+\section{评价指标}
+
+本文使用 RMSE、MAE 和 $R^2$ 三个指标评价回归模型效果。
+
+均方根误差 RMSE 定义为：
+
+\begin{equation}
+RMSE=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_i-\hat{y}_i)^2}.
+\end{equation}
+
+平均绝对误差 MAE 定义为：
+
+\begin{equation}
+MAE=\frac{1}{n}\sum_{i=1}^{n}|y_i-\hat{y}_i|.
+\end{equation}
+
+决定系数 $R^2$ 定义为：
+
+\begin{equation}
+R^2=1-\frac{\sum_{i=1}^{n}(y_i-\hat{y}_i)^2}{\sum_{i=1}^{n}(y_i-\bar{y})^2}.
+\end{equation}
+
+其中，$y_i$ 表示真实值，$\hat{y}_i$ 表示预测值，$\bar{y}$ 表示真实值均值。RMSE 和 MAE 越小表示误差越低，$R^2$ 越接近 1 表示模型解释能力越强。
+
+\section{实验结果}
+
+\subsection{模型评价结果}
+
+实验运行后，将在表 \ref{tab:metrics} 中填入各模型的评价指标。
+
+\begin{table}[H]
+\centering
+\caption{模型预测性能对比（待实验结果填入）}
+\label{tab:metrics}
+\begin{tabular}{lccc}
+\toprule
+模型 & RMSE & MAE & $R^2$ \\
+\midrule
+线性回归 Baseline & 待填 & 待填 & 待填 \\
+随机森林回归 & 待填 & 待填 & 待填 \\
+MLP 神经网络（可选） & 待填 & 待填 & 待填 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+预期结果是：随机森林回归模型的 RMSE 和 MAE 低于线性回归，$R^2$ 高于线性回归。这说明随机森林能够更好地捕捉 Lorenz 系统中的非线性映射关系。
+
+\subsection{真实值与预测值散点图}
+
+真实值与预测值散点图用于直观展示模型预测结果。如果模型预测准确，散点应集中分布在 $y=x$ 参考线附近。
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入线性回归真实值 vs 预测值散点图：\texttt{figures/prediction\_scatter\_linear.png}
+\end{minipage}}
+\caption{线性回归模型真实值与预测值散点图}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入随机森林真实值 vs 预测值散点图：\texttt{figures/prediction\_scatter\_rf.png}
+\end{minipage}}
+\caption{随机森林模型真实值与预测值散点图}
+\end{figure}
+
+\subsection{时间序列预测对比}
+
+除了散点图，还可以选择测试集中的一小段连续时间区间，比较真实 $x(t+\Delta t)$ 与模型预测值的变化趋势。该图能够展示模型是否能跟随 Lorenz 系统的局部变化。
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入时间序列预测对比图：\texttt{figures/time\_series\_prediction.png}
+\end{minipage}}
+\caption{测试集局部时间序列预测对比图}
+\end{figure}
+
+\subsection{残差分析}
+
+残差定义为真实值与预测值之差：
+
+\begin{equation}
+e_i=y_i-\hat{y}_i.
+\end{equation}
+
+残差图可以帮助判断模型误差是否存在系统性偏差。如果残差随机分布在 0 附近，说明模型没有明显偏向；如果残差在某些区域明显增大，说明模型在这些状态区间预测能力不足。
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}[c][5cm][c]{0.82\textwidth}
+\centering
+此处插入残差图：\texttt{figures/residuals.png}
+\end{minipage}}
+\caption{模型残差分布图}
+\end{figure}
+
+\section{讨论}
+
+从数学结构上看，Lorenz 系统包含明显的非线性项，例如 $xy$ 和 $xz$。因此，单纯使用线性回归模型很难完全刻画系统状态之间的映射关系。随机森林模型通过多棵决策树的组合，可以在不同局部区域建立不同的预测规则，因此更适合处理非线性关系。
+
+如果实验结果显示随机森林的 RMSE 和 MAE 明显低于线性回归，且 $R^2$ 更高，则可以说明复杂模型在该混沌系统短期预测任务中具有优势。但这并不意味着模型能够长期准确预测混沌系统。由于混沌系统具有初值敏感性，预测误差可能会随着时间推移逐渐放大。因此，本文结果更适合解释为“机器学习可以学习短期局部演化规律”，而不是“机器学习可以完全解决混沌系统长期预测问题”。
+
+此外，本文数据由 Lorenz 方程模拟生成，具有清晰的数学来源和较高可控性。但模拟数据也存在局限：它没有包含真实实验中的测量噪声、外部扰动和参数不确定性。未来可以进一步研究加入噪声后的模型鲁棒性，或者比较不同参数条件下模型的泛化能力。
+
+\section{AI 协作反思}
+
+本项目使用 LLM 作为辅助工具参与选题、建模设计、代码规划和报告写作。LLM 在以下方面提供了帮助：
+
+\begin{enumerate}
+    \item 帮助比较多个理工科与数学类机器学习选题；
+    \item 根据课程要求筛选适合非计算机专业学生完成的项目；
+    \item 将 Lorenz 混沌系统转化为监督学习回归问题；
+    \item 设计 Baseline Model、主模型、评价指标和可视化图表；
+    \item 辅助组织论文结构，并生成 LaTeX 中文报告草稿。
+\end{enumerate}
+
+同时，LLM 的输出仍需要人工检查。例如，Lorenz 方程的数学形式、参数设置、数据生成方式和模型评价结果都需要通过代码运行和人工核对确认。LLM 可以提高项目设计和写作效率，但不能替代对数学原理和实验结果的理解。
+
+\section{提示词记录}
+
+本项目中使用的关键提示词包括：
+
+\begin{enumerate}
+    \item “请根据课程作业要求，提出适合机器学习预测建模的理工科/AI4SCI 选题。”
+    \item “题目不要使用经典房价预测，要更偏理工科和科学建模。”
+    \item “数学类题目有哪些？请详细解释。”
+    \item “选择 Lorenz 混沌系统作为项目题目，并设计机器学习建模路线。”
+    \item “报告论文使用中文 LaTeX 编译，生成可编译的论文源文件。”
+\end{enumerate}
+
+\section{结论}
+
+本文选择 Lorenz 混沌系统作为数学类 AI4SCI 机器学习预测建模项目。通过数值模拟生成数据，将连续动力系统预测问题转化为监督学习回归问题，并计划使用线性回归作为 Baseline Model、随机森林回归作为主模型进行比较。该项目能够完整覆盖课程要求，包括数据构建、缺失值检查、StandardScaler 标准化、相关性热力图、机器学习建模、RMSE、MAE、$R^2$ 指标评价以及真实值与预测值散点图。
+
+从科学意义上看，Lorenz 系统体现了非线性动力系统短期可预测与长期难预测之间的矛盾。机器学习模型能够在短期内学习系统的局部演化规律，但仍受到混沌系统初值敏感性的限制。后续工作可以进一步完成 Python 建模代码，生成真实实验指标和图表，并将结果补充到本文 LaTeX 报告中。
+
+\end{document}
