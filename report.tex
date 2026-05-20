@@ -15,7 +15,7 @@
 \hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
 \setlist{itemsep=0.2em,topsep=0.4em}
 
-\title{基于稀疏动力学识别与物理-机器学习混合修正的 Lorenz 混沌系统预测边界分析}
+\title{基于监督学习与物理残差修正的 Lorenz 混沌系统预测研究}
 \author{小组成员：钟兴涛、黄宇轩、郝致祺\\课程名称：人工智能导论}
 \date{\today}
 
@@ -24,50 +24,36 @@
 \maketitle
 
 \begin{abstract}
-本文以 Lorenz 混沌系统为研究对象，讨论机器学习模型在非线性动力系统状态预测中的适用范围。实验首先从课程原始任务 $x(t+10\Delta t)$ 单变量预测出发，扩展到三维状态转移 $\mathbf{s}_t\to\mathbf{s}_{t+k}$，并通过预测步长（prediction horizon）、递归多步推演（recursive rollout）和不同初始条件测试分析误差增长。随后，本文引入稀疏动力学识别（SINDy）和物理-机器学习混合修正（hybrid physical-ML correction），分别考察显式方程结构恢复和不完美物理模型的残差校正能力。
-
-在当前模拟数据和模型设置下，短期局部状态转移可以被非线性模型较好拟合：原始单变量任务中 MLP 的 RMSE 为 0.0757，三维状态任务在 $k=10$ 时 Random Forest 与 MLP 的 $RMSE_{state}$ 分别为 0.3425 和 0.4130。随着预测步长增大到 $k=500$，二者 $RMSE_{state}$ 分别上升到 10.9789 和 14.0980，递归推演中也出现明显误差累积。SINDy 从轨迹数据中恢复出接近真实 Lorenz 方程的稀疏结构，例如 $dx/dt\approx -9.9943x+9.9943y$、$dy/dt\approx27.9517x-0.9906y-0.9986xz$、$dz/dt\approx0.9992xy-2.6646z$。Hybrid correction 在本文设定的单一参数偏差（真实 $\rho=28$、不完美物理模型 $\rho=26$）下将一步 $RMSE_{state}$ 从 0.0786 降至 0.0003--0.0006，并在 500 步窗口内保持低于经验失效阈值。上述结果说明机器学习可以学习短期局部映射，SINDy 可提供显式结构识别，混合修正在当前有限场景下有效；但这些结果不能泛化为任意物理模型错误或混沌系统长期逐点预测均可解决。
+本文以 Lorenz 混沌系统为对象，使用 AI 导论课程中的回归、树模型和神经网络方法进行监督学习预测。实验表明，Linear Regression、Random Forest 和 MLP 可以在短时间尺度上学习局部状态转移，但随着 prediction horizon 增大，状态误差明显上升；在 recursive rollout 中，模型会不断使用自身预测作为下一步输入，误差因此持续累积。为了改善直接预测的局限，本文进一步使用 Residual MLP 学习状态变化量，并使用 Hybrid correction 学习不完美物理模型的残差。结果表明，在当前参数偏差设定（真实系统 $\rho=28$，不完美物理模型 $\rho=26$）下，物理模型与机器学习结合可以显著改善一步预测和短中期递归推演效果，体现了 AI for Science 中机器学习辅助科学建模的思想。本文不将结论扩展为“机器学习解决了混沌系统长期预测”，而是强调 Lorenz 系统短期可学、长期受限，残差学习和物理残差修正在有限设定下具有明确价值。
 \end{abstract}
 
-\noindent\textbf{关键词：} Lorenz 系统；混沌；状态转移预测；稀疏动力学识别；残差学习；物理-机器学习混合修正；预测边界；AI4SCI
+\noindent\textbf{关键词：} Lorenz 系统；监督学习；Linear Regression；Random Forest；MLP；Residual MLP；Hybrid correction；AI for Science
 
 \section{引言}
 
-科学预测是人工智能与科学计算交叉领域中的重要问题。许多自然系统由确定性方程控制，但非线性耦合和初值敏感性会使其长期行为难以逐点预测。Lorenz 系统最初来源于大气对流模型，是混沌理论中的经典案例 \cite{lorenz1963}。该系统的轨迹在相空间中形成著名的蝴蝶形吸引子，并对初始状态极其敏感。
+\subsection{Lorenz 系统与混沌预测问题}
 
-原始课程任务要求根据 Lorenz 系统当前状态 $(x_t,y_t,z_t)$ 预测 10 个采样步长后的 $x$ 分量。该任务适合展示监督学习回归的基本流程，但单一分量、固定短步长的高精度并不足以反映混沌系统预测中的误差增长、递归推演稳定性和轨迹泛化问题。因此，本文将研究对象从单变量短期预测扩展为完整三维状态转移预测，并重点分析机器学习模型在混沌系统中的预测边界。
+Lorenz 系统是非线性动力系统和混沌理论中的经典模型 \cite{lorenz1963}。它由确定性微分方程控制，但由于存在非线性耦合和初值敏感性，长期逐点预测非常困难。对课程项目而言，Lorenz 系统适合作为“AI for Science”小案例：一方面，系统方程清楚、数据可以由数值模拟生成；另一方面，混沌误差放大会限制普通黑箱模型的长期预测能力。
 
-本文围绕以下问题展开：
+\subsection{AI 导论课程模型与科学预测任务}
 
-\begin{enumerate}
-    \item 机器学习模型能否从数据中学习 Lorenz 系统的完整三维状态转移映射？
-    \item 当预测步长（prediction horizon）增大时，预测误差如何变化？
-    \item 当一步模型被递归用于多步推演（recursive rollout）时，误差是否会累积？
-    \item 在不重新训练的情况下，模型能否泛化到不同初始条件生成的新轨迹？
-    \item 残差学习、输出标准化、激活函数和回声状态网络（Echo State Network, ESN）是否能改善状态转移建模？
-    \item SINDy 能否从轨迹数据中恢复 Lorenz 方程的显式结构？Hybrid correction 能否修正参数有偏的不完美物理模型？
-\end{enumerate}
+本项目主要使用 AI 导论课程中涉及的回归、树模型和神经网络方法。Linear Regression 对应基础回归模型，Random Forest 对应树模型，MLP 和 Residual MLP 对应神经网络模型。在此基础上，本文将监督学习任务从直接预测未来状态扩展为物理模型残差修正，以体现 AI for Science 中机器学习辅助科学建模的思想。
 
-本文的主要贡献包括：
+因此，本文不追求堆叠大量复杂模型，而是把重点放在任务定义和预测边界分析上：普通监督学习模型能否学习短期状态转移？prediction horizon 增大后误差如何变化？recursive rollout 中误差为什么会累积？如果已有一个参数有偏的物理模型，机器学习能否作为残差修正器而不是完全替代物理模型？
+
+\subsection{本文思路：从直接监督学习预测到物理残差修正}
+
+本文贡献压缩为三点：
 
 \begin{enumerate}
-    \item 将原始单变量短期预测扩展为三维状态转移预测，使任务更接近动力系统建模问题；
-    \item 通过预测步长、递归多步推演和初始条件泛化实验刻画 Lorenz 系统中的预测边界；
-    \item 比较直接 MLP、Residual MLP、输出标准化、激活函数和 ESN 对状态转移学习的影响，突出模型结构改进的作用与局限；
-    \item 引入 SINDy 稀疏动力学识别和物理-机器学习混合修正，使项目从单纯预测扩展到动力学结构发现与不完美物理模型误差校正。
+    \item 将 Lorenz 系统预测构造为监督学习回归任务，并比较回归、树模型和神经网络方法；
+    \item 通过 prediction horizon 和 recursive rollout 分析普通黑箱模型的预测边界；
+    \item 引入 Residual MLP 和 Hybrid correction，说明残差学习和物理模型修正在科学预测中的价值。
 \end{enumerate}
 
-\subsection{相关工作与研究定位}
+\section{数据与任务定义}
 
-Lorenz 系统是研究非线性动力学和混沌现象的经典模型，其确定性方程和初值敏感性使其成为检验预测模型的重要基准 \cite{lorenz1963,strogatz2015}。在这类系统中，短时间尺度上的局部状态转移通常具有平滑性，因此监督学习模型可以学习 $\mathbf{s}_t\to\mathbf{s}_{t+k}$ 的经验映射；但长期逐点预测会受到 Lyapunov 指数所描述的误差指数放大限制。
-
-机器学习动力系统建模通常可分为三类。第一类是直接预测模型，例如线性回归、随机森林和多层感知机（MLP），它们把动力系统视为监督学习回归问题。第二类是序列或动力系统专用模型，例如 ESN 所属的 reservoir computing 方法，利用固定随机储备池和线性读出层建模时序动力学 \cite{lukosevicius2009}。第三类是结构发现方法，其中 SINDy（Sparse Identification of Nonlinear Dynamics）通过构造候选函数库并进行稀疏回归，从数据中识别控制方程的少量关键项 \cite{brunton2016}。SINDy 与黑箱预测模型不同，它输出可解释的显式方程，因此适合检验数据是否支持原始动力学结构。
-
-近年来，physics-informed machine learning 和 hybrid scientific machine learning 强调把已有科学知识与数据驱动模型结合，而不是完全用黑箱模型替代物理模型 \cite{raissi2019,karniadakis2021}。在此思想下，机器学习可以用于学习未知闭合项、参数偏差或数值模型残差。本文的 Hybrid correction 实验即采用这一定位：先构造一个参数有偏的不完美 Lorenz 物理模型，再让机器学习模型学习其一步预测残差。本文不追求提出新的动力系统算法，而是以 AI 导论课程项目为定位，比较常见方法在短期拟合、长期递推、结构识别和物理残差校正中的表现差异。
-
-\section{数学背景与问题定义}
-
-\subsection{Lorenz 系统}
+\subsection{Lorenz 方程}
 
 Lorenz 系统由以下三个耦合常微分方程组成：
 
@@ -83,353 +69,278 @@ Lorenz 系统由以下三个耦合常微分方程组成：
 \frac{dz}{dt}=xy-\beta z.
 \end{equation}
 
-本文采用经典参数设置：
+本文真实系统采用经典参数：
 
 \begin{equation}
 \sigma=10,\quad \rho=28,\quad \beta=\frac{8}{3}.
 \end{equation}
 
-在该参数组合下，系统表现出典型混沌行为。混沌系统的关键特点是短期局部演化具有可学习规律，但长期轨迹会因初始误差和模型误差被非线性动力学放大而变得难以精确预测 \cite{strogatz2015}。
+在该参数组合下，轨迹形成典型 Lorenz 吸引子。图 \ref{fig:lorenz} 展示了本文数据生成所使用的三维轨迹。
 
-\subsection{从单变量预测到状态转移预测}
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/lorenz_attractor.png}
+\caption{Lorenz 系统三维吸引子轨迹。轨迹在两个翼之间不规则切换，说明本文预测任务发生在非线性混沌系统上。}
+\label{fig:lorenz}
+\end{figure}
 
-原始任务定义为：
+\subsection{数据生成}
 
-\begin{equation}
-(x_t,y_t,z_t)\rightarrow x_{t+10}.
-\end{equation}
-
-增强后的主要任务定义为完整状态转移预测。令系统状态向量为
-
-\begin{equation}
-\mathbf{s}_t=(x_t,y_t,z_t),
-\end{equation}
-
-则预测步长为 $k$ 的监督学习任务为
-
-\begin{equation}
-\mathbf{s}_t\rightarrow \mathbf{s}_{t+k}=(x_{t+k},y_{t+k},z_{t+k}).
-\end{equation}
-
-其中 $k\in\{1,5,10,20,50,100,200,500\}$。该设定比单一 $x$ 分量预测更接近动力系统状态预测任务，也能直接分析预测步长对误差的影响。
-
-\subsection{递归多步推演}
-
-除直接预测 $\mathbf{s}_{t+k}$ 外，本文还训练一步状态转移模型：
-
-\begin{equation}
-\hat{\mathbf{s}}_{t+1}=f_\theta(\mathbf{s}_t).
-\end{equation}
-
-在递归多步推演阶段，只给定初始真实状态 $\mathbf{s}_t$，之后重复使用模型输出作为下一步输入：
-
-\begin{equation}
-\hat{\mathbf{s}}_{t+i+1}=f_\theta(\hat{\mathbf{s}}_{t+i}).
-\end{equation}
-
-这一实验用于观察一步预测误差在连续递推中的累积现象。
-
-\section{数据生成与实验设计}
-
-\subsection{数据生成与数据切分}
-
-本文不使用外部数据集，而是通过 \texttt{scipy.integrate.solve\_ivp} 数值求解 Lorenz 方程 \cite{virtanen2020}。基础轨迹初始条件为 $(1,1,1)$，模拟时间范围为 $[0,50]$，采样点数为 10000，采样步长约为
+本文不使用外部数据集，而是通过 \texttt{scipy.integrate.solve\_ivp} 数值求解 Lorenz 方程 \cite{virtanen2020}。基础轨迹初始状态为 $(1,1,1)$，模拟时间范围为 $[0,50]$，采样点数为 10000，采样步长约为
 
 \begin{equation}
 \Delta t \approx 0.0050005.
 \end{equation}
 
-图 \ref{fig:lorenz} 展示了该参数设置下的三维吸引子结构。轨迹呈现典型双翼吸引子形态，说明后续预测任务是在非线性混沌轨道上进行的。
+所有监督学习实验均按时间顺序切分数据：前 80\% 作为训练集，后 20\% 作为测试集，不随机打乱，以避免未来信息进入训练过程。输入特征标准化器只在训练集上拟合，然后应用到训练集和测试集。
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.78\textwidth]{figures/lorenz_attractor.png}
-\caption{Lorenz 系统三维吸引子轨迹图。轨迹在两个翼之间不规则切换，体现了确定性系统中的混沌行为。}
-\label{fig:lorenz}
-\end{figure}
+\subsection{直接状态预测任务}
 
-所有监督学习实验均按时间顺序切分数据：前 80\% 样本作为训练集，后 20\% 样本作为测试集，不随机打乱，以避免未来信息进入训练过程。原始单变量任务在 $k=10$ 时共有 9990 个样本，其中训练集 7992 个、测试集 1998 个。三维状态预测中，每个 horizon 都重新构造数据集，样本数为 $10000-k$，再按 80\%/20\% 时间顺序切分；例如 $k=10$ 时训练/测试样本数为 7992/1998，$k=500$ 时为 7600/1900。该设置意味着 horizon 增大时可用样本数会减少，表格中的结果应在这一数据规模变化背景下理解。
-
-标准化方面，输入特征的 \texttt{StandardScaler} 只在训练集上 \texttt{fit}，再应用到训练集和测试集。增强 MLP 实验中，输出目标 $Y=(x,y,z)$ 或残差目标 $\Delta Y$ 也使用只在训练集上拟合的 \texttt{StandardScaler}，评价前再反标准化回原始物理尺度。不同初始条件泛化实验使用 $(1,1,1)$ 轨迹训练得到的模型和 scaler 直接变换新轨迹输入，不对新轨迹重新训练或重新拟合 scaler。递归多步推演从测试段的第一个真实状态开始，真实对照轨迹从下一步开始取 500 步；除初始状态外，后续输入均为模型自身预测。
-
-\subsection{模型设置}
-
-本文比较以下模型，并为每类模型设置明确角色：
-
-\begin{enumerate}
-    \item \textbf{Persistence Model}：直接将当前状态作为未来状态预测，是最简单的连续性基线。
-    \item \textbf{Linear Regression}：用线性映射近似局部状态转移，是局部线性化基线。
-    \item \textbf{Random Forest Regressor}：传统非线性机器学习强基线，用于检验非线性树模型在不同预测步长下的稳定性。
-    \item \textbf{Direct MLP}：直接预测未来状态 $\mathbf{s}_{t+k}$，作为神经网络状态预测的基本形式。
-    \item \textbf{Residual MLP}：预测状态变化量 $\Delta\mathbf{s}=\mathbf{s}_{t+k}-\mathbf{s}_t$，再还原 $\hat{\mathbf{s}}_{t+k}=\mathbf{s}_t+\widehat{\Delta\mathbf{s}}$。该设计更贴近数值积分中的“当前状态加增量”思想，是本文模型增强部分的重点。
-    \item \textbf{回声状态网络（Echo State Network, ESN）}：使用固定随机 reservoir 和线性 readout 的 reservoir computing 模型，作为动力系统时间序列模型对照。
-    \item \textbf{SINDy}：在多项式候选函数库中使用稀疏回归识别控制方程，用于回答模型是否能从数据中恢复动力学结构。
-    \item \textbf{物理-机器学习混合修正（hybrid physical-ML correction）}：构造参数有偏的 Lorenz 物理模型，并训练机器学习残差修正器学习真实一步状态与不完美物理预测之间的偏差。
-\end{enumerate}
-
-模型使用 scikit-learn 实现 \cite{pedregosa2011}；ESN 使用轻量 NumPy 实现。
-
-\subsection{SINDy 与混合修正设置}
-
-SINDy 实验使用中心差分估计导数：
+令系统状态向量为
 
 \begin{equation}
-\dot{\mathbf{s}}_t\approx\frac{\mathbf{s}_{t+1}-\mathbf{s}_{t-1}}{2\Delta t}.
+\mathbf{s}_t=(x_t,y_t,z_t),
 \end{equation}
 
-候选函数库设为
+直接监督学习预测任务定义为：
 
 \begin{equation}
-\Theta(\mathbf{s})=[1,x,y,z,x^2,xy,xz,y^2,yz,z^2],
+f_\theta(\mathbf{s}_t) \approx \mathbf{s}_{t+k}.
 \end{equation}
 
-然后使用 sequential thresholded least squares 进行稀疏回归，阈值设为 0.05。该实验的目标不是提升一步 RMSE，而是检查数据驱动方法能否恢复 Lorenz 方程的少量关键项。
+其中 $k$ 是 prediction horizon。本文主文只展示 $k=10,100,500$ 的代表性结果，完整结果保存在 \texttt{results/horizon\_results.csv}。此外，课程原始任务为从 $(x_t,y_t,z_t)$ 预测 $x(t+10\Delta t)$，对应结果保存在 \texttt{results/model\_metrics.csv}。
 
-Hybrid correction 实验中，真实系统参数仍为 $\rho=28$，不完美物理模型故意设为 $\rho=26$，其余参数保持不变。先用该错误物理模型计算一步预测 $\mathbf{s}^{phys}_{t+1}$，再训练残差模型：
+\subsection{物理残差修正任务}
+
+为了模拟真实科学建模中“已有近似物理模型但参数有偏”的情况，本文构造一个不完美 Lorenz 物理模型。真实系统使用 $\rho=28$，不完美物理模型使用
 
 \begin{equation}
-\mathbf{r}_{t+1}=\mathbf{s}_{t+1}-\mathbf{s}^{phys}_{t+1},
+\rho=26.
 \end{equation}
 
-最终混合预测为
+先由不完美物理模型预测一步未来状态 $\mathbf{s}^{phys}_{t+1}$，再定义残差：
 
 \begin{equation}
-\hat{\mathbf{s}}^{hybrid}_{t+1}=\mathbf{s}^{phys}_{t+1}+\hat{\mathbf{r}}_{t+1}.
+\mathbf{r}_{t+1}=\mathbf{s}_{t+1}-\mathbf{s}^{phys}_{t+1}.
 \end{equation}
 
-本文比较 imperfect physics、pure ML residual MLP、Hybrid RF 和 Hybrid MLP，并在 500 步递归多步推演中评估误差累积。需要强调的是，本文只测试了 $\rho=26$ 这一种参数偏差，不能由此推出 hybrid correction 对任意模型结构错误、边界条件错误或参数偏差都同样有效。
+机器学习模型学习该残差，而不是直接从零学习完整物理演化。
 
 \subsection{评价指标}
 
-对单变量原始任务，继续使用 RMSE、MAE 和 $R^2$。对完整三维状态预测，本文定义状态 RMSE：
+对单变量课程原始任务，本文报告 RMSE、MAE 和 $R^2$。对三维状态预测，本文使用状态 RMSE：
 
 \begin{equation}
 RMSE_{state}=\sqrt{\frac{1}{n}\sum_{i=1}^{n}\|\mathbf{s}_i-\hat{\mathbf{s}}_i\|_2^2}.
 \end{equation}
 
-这里 $RMSE_{state}$ 是每个样本三维欧氏误差的均方根，而不是 $x,y,z$ 三个分量 RMSE 的简单平均。同时计算 $x,y,z$ 各分量的 RMSE、MAE、$R^2$，并报告三个分量 $R^2$ 的平均值 $R^2_{mean}$。
+同时报告三个分量 $R^2$ 的平均值 $R^2_{mean}$。在 recursive rollout 分析中，本文还使用有效预测时间（valid prediction time）：当逐步状态误差首次超过经验阈值 $5.5234$ 时，认为逐点预测失效，并将对应物理时间换算为 Lyapunov time。该阈值只是经验标准，因此需要与误差曲线共同解读。
 
-为了更符合混沌系统评价习惯，本文还引入有效预测时间（valid prediction time）。Lorenz63 最大 Lyapunov 指数近似取 0.9，因此一个 Lyapunov time 约为 $1/0.9\approx1.11$ 个物理时间单位。本文把训练轨迹状态标准差向量范数的 0.4 倍作为经验误差阈值，即 $0.4\|\mathrm{std}(\mathbf{s}_{train})\|_2=5.5234$。当 rollout 的逐步状态误差首次超过该阈值时，认为逐点预测在该经验标准下失效，并将失效前时间换算为 Lyapunov time。该阈值不是唯一标准，因此本文同时给出完整误差曲线和长期统计量，包括各状态分量的均值、标准差、最小值、最大值和分布对比。
+\section{方法}
 
-\section{实验结果}
+\subsection{Linear Regression：回归基线}
 
-\subsection{原始单变量短期预测结果}
+Linear Regression 学习从当前状态到未来状态的线性映射。它对应课程中的基础回归模型，也可视为对局部状态转移的线性近似。由于 Lorenz 方程包含 $xz$、$xy$ 等非线性项，线性模型表达能力有限，但它提供了清晰的回归基线。
 
-表 \ref{tab:original_metrics} 给出了原始 $x(t+10\Delta t)$ 预测任务结果，数值来自 \texttt{results/model\_metrics.csv}。非线性模型在该任务上取得很高精度，说明 Lorenz 系统短期局部演化映射可以被机器学习模型拟合。
+\subsection{Random Forest：树模型}
+
+Random Forest Regressor 是本文的树模型代表。它可以拟合非线性状态转移关系，并且训练过程相对稳定。本文使用它观察传统非线性机器学习模型在不同 prediction horizon 下的短期拟合能力和长期退化现象 \cite{pedregosa2011}。
+
+\subsection{MLP：神经网络直接预测}
+
+Direct MLP 使用多层感知机直接学习
+
+\begin{equation}
+f_\theta(\mathbf{s}_t) \approx \mathbf{s}_{t+k}.
+\end{equation}
+
+该模型对应课程中的神经网络内容。MLP 能拟合非线性映射，因此在短期预测中通常优于线性模型；但在长 horizon 或 recursive rollout 中，预测误差仍会被混沌动力学放大。
+
+\subsection{Residual MLP：状态增量学习}
+
+Residual MLP 不直接预测未来状态，而是学习状态变化量：
+
+\begin{equation}
+\Delta \mathbf{s}=\mathbf{s}_{t+k}-\mathbf{s}_t,
+\end{equation}
+
+\begin{equation}
+g_\theta(\mathbf{s}_t) \approx \Delta \mathbf{s}.
+\end{equation}
+
+最终预测为
+
+\begin{equation}
+\hat{\mathbf{s}}_{t+k}=\mathbf{s}_t+g_\theta(\mathbf{s}_t).
+\end{equation}
+
+这一形式更接近连续动力系统数值积分中的“当前状态 + 局部增量”，因此比直接学习未来状态更适合中短期状态转移。
+
+\subsection{Hybrid Correction：物理模型残差修正}
+
+Hybrid correction 的核心思想不是用机器学习替代物理模型，而是让不完美物理模型承担主要演化，再由机器学习修正其系统误差。本文先由 $\rho=26$ 的不完美物理模型得到一步预测：
+
+\begin{equation}
+\mathbf{s}^{phys}_{t+1},
+\end{equation}
+
+然后让机器学习模型学习
+
+\begin{equation}
+h_\theta(\mathbf{s}_t)\approx \mathbf{r}_{t+1}=\mathbf{s}_{t+1}-\mathbf{s}^{phys}_{t+1}.
+\end{equation}
+
+最终预测为
+
+\begin{equation}
+\hat{\mathbf{s}}_{t+1}=\mathbf{s}^{phys}_{t+1}+h_\theta(\mathbf{s}_t).
+\end{equation}
+
+表 \ref{tab:method_comparison} 总结了 Direct MLP、Residual MLP 和 Hybrid MLP 的学习目标差异。
 
 \begin{table}[H]
 \centering
-\caption{原始单变量短期预测结果（来自 \texttt{model\_metrics.csv}）}
+\caption{Direct MLP、Residual MLP 和 Hybrid MLP 的任务形式对比。该表统一了本文从直接预测到残差修正的递进结构。}
+\label{tab:method_comparison}
+\begin{tabular}{lll}
+\toprule
+方法 & 学习目标 & 解释 \\
+\midrule
+Direct MLP & $\mathbf{s}_{t+k}$ & 直接预测未来状态 \\
+Residual MLP & $\mathbf{s}_{t+k}-\mathbf{s}_t$ & 学习状态变化量 \\
+Hybrid MLP & $\mathbf{s}_{t+1}-\mathbf{s}^{phys}_{t+1}$ & 学习物理模型误差 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{实验结果}
+
+\subsection{直接监督学习预测结果}
+
+表 \ref{tab:original_metrics} 给出课程原始单变量任务 $x(t+10\Delta t)$ 的结果，数值来自 \texttt{results/model\_metrics.csv}。这里删除了 Persistence Model 的主文重点，只保留课程对应的回归、树模型和神经网络模型。可以看到，Random Forest 和 MLP 在短期单变量预测中取得较低误差，说明短时间尺度上的局部状态转移可被非线性模型拟合。
+
+\begin{table}[H]
+\centering
+\caption{课程原始短期预测任务结果（来自 \texttt{model\_metrics.csv}）。该表说明短期局部映射可学习，但不能推出长期混沌预测已解决。}
 \label{tab:original_metrics}
 \begin{tabular}{lccc}
 \toprule
 模型 & RMSE & MAE & $R^2$ \\
 \midrule
-Persistence Model & 2.2104 & 1.8254 & 0.9208 \\
-线性回归 & 0.5457 & 0.4437 & 0.9952 \\
-随机森林 & 0.0805 & 0.0507 & 0.9999 \\
+Linear Regression & 0.5457 & 0.4437 & 0.9952 \\
+Random Forest & 0.0805 & 0.0507 & 0.9999 \\
 MLP & 0.0757 & 0.0599 & 0.9999 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-因此，该实验在本文中主要作为起点：它说明短期局部映射是可学习的，但不能单独支撑长期混沌预测结论。
+\subsection{Prediction horizon 对误差的影响}
 
-\subsection{预测步长敏感性（horizon sensitivity）}
-
-表 \ref{tab:horizon_metrics} 展示了若干代表性预测步长下的三维状态预测结果，数值来自 \texttt{results/horizon\_results.csv}。可以看到，$k=10$ 时 Random Forest 和 MLP 均能保持较低状态 RMSE；当 $k$ 增大到 100 和 500 后，误差显著增加，$R^2_{mean}$ 也明显下降。
+表 \ref{tab:horizon_metrics} 展示 $k=10,100,500$ 下的三维状态预测结果，数值来自 \texttt{results/horizon\_results.csv}。随着 horizon 增大，各模型状态 RMSE 明显上升，说明普通监督学习模型的预测能力存在时间尺度边界。
 
 \begin{table}[H]
 \centering
-\caption{不同预测步长下的三维状态预测代表性结果（来自 \texttt{horizon\_results.csv}）}
+\caption{不同 prediction horizon 下的三维状态预测结果（来自 \texttt{horizon\_results.csv}）。完整 horizon 结果见 CSV 文件。}
 \label{tab:horizon_metrics}
 \begin{tabular}{rlcc}
 \toprule
 Horizon & 模型 & State RMSE & $R^2_{mean}$ \\
 \midrule
+10 & Linear Regression & 4.7791 & 0.9028 \\
 10 & Random Forest & 0.3425 & 0.9995 \\
 10 & MLP & 0.4130 & 0.9993 \\
+100 & Linear Regression & 15.4505 & -0.0793 \\
 100 & Random Forest & 3.1292 & 0.9569 \\
 100 & MLP & 2.1529 & 0.9800 \\
+500 & Linear Regression & 15.2982 & -0.0292 \\
 500 & Random Forest & 10.9789 & 0.4714 \\
 500 & MLP & 14.0980 & 0.1245 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-图 \ref{fig:horizon_rmse} 更直观地展示了预测步长与状态 RMSE 的关系。随着 $k$ 增大，Persistence 和 Linear Regression 快速失效；非线性模型在中短期内更稳健，但在较长预测步长下也出现明显退化。
-
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.86\textwidth]{figures/horizon_vs_rmse.png}
-\caption{预测步长对三维状态预测误差的影响。纵轴采用对数尺度，显示短期内非线性模型误差较低，但步长增大后所有模型均出现不同程度退化。}
+\caption{不同 prediction horizon 下的状态 RMSE。随着 horizon 增大，各模型误差明显上升，说明普通监督学习模型的预测能力存在时间尺度边界。}
 \label{fig:horizon_rmse}
 \end{figure}
 
-\subsection{递归多步推演}
+\subsection{Recursive rollout 中的误差累积}
 
-直接预测 $\mathbf{s}_{t+k}$ 时，每个测试样本仍使用真实当前状态作为输入；而长期推演更接近递归多步推演：模型必须不断使用自己的预测结果继续向前推进。图 \ref{fig:rollout_error} 显示了 500 步推演中累计状态 RMSE 的变化。500 步结束时，Linear Regression、Random Forest、MLP 的累计状态 RMSE 分别约为 20.2244、14.5356、19.8142，数值来自 \texttt{results/rollout\_results.csv}。
+直接预测 $\mathbf{s}_{t+k}$ 时，每个测试样本仍使用真实当前状态作为输入；而 recursive rollout 只在初始时给定一次真实状态，之后不断使用模型自己的预测作为下一步输入。因此，早期误差会进入后续输入并被继续放大。
+
+表 \ref{tab:rollout_metrics} 给出 500 步 rollout 结束时的累计状态 RMSE，数值来自 \texttt{results/rollout\_results.csv}。Random Forest 在该实验中低于 Linear Regression 和 MLP，但三者都出现了明显长期误差累积。
+
+\begin{table}[H]
+\centering
+\caption{500 步 recursive rollout 的最终累计状态 RMSE（来自 \texttt{rollout\_results.csv}）。}
+\label{tab:rollout_metrics}
+\begin{tabular}{lcc}
+\toprule
+模型 & Rollout 步数 & 最终累计 State RMSE \\
+\midrule
+Linear Regression & 500 & 20.2244 \\
+Random Forest & 500 & 14.5356 \\
+MLP & 500 & 19.8142 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.86\textwidth]{figures/rollout_error.png}
-\caption{递归多步推演中的误差累积曲线。与直接多步预测不同，recursive rollout 会将模型自身误差反复输入下一步，因此短期一步误差会逐渐转化为长期轨迹偏离。}
+\caption{递归多步推演中的误差累积曲线。模型自身误差会被反复输入下一步，因此短期一步误差会逐渐转化为长期轨迹偏离。}
 \label{fig:rollout_error}
 \end{figure}
 
-图 \ref{fig:rollout_x} 展示了 rollout 中 $x(t)$ 的真实值与预测值对比。即使一步模型在短期预测上表现较好，连续递推后仍会逐渐偏离真实轨迹。
+\subsection{Residual MLP 的改进效果}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.86\textwidth]{figures/rollout_x_comparison.png}
-\caption{递归多步推演中 $x(t)$ 的真实值与预测值对比。局部拟合误差在连续递推后造成相位和幅值偏离。}
-\label{fig:rollout_x}
-\end{figure}
-
-图 \ref{fig:rollout_attractor} 从三维相空间角度比较真实轨迹与 rollout 预测轨迹。该图说明点预测误差的累积会进一步表现为相空间轨迹的偏移。
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.78\textwidth]{figures/rollout_attractor.png}
-\caption{真实轨迹与递归多步推演轨迹的三维对比。预测轨迹仍可能落在吸引子附近，但逐点位置已与真实轨迹分离。}
-\label{fig:rollout_attractor}
-\end{figure}
-
-\subsection{初始条件泛化（initial condition generalization）}
-
-为了测试模型是否只是拟合同一条轨迹，本文保持模型训练数据主要来自初始条件 $(1,1,1)$，然后直接测试其他初始条件生成的轨迹，不进行重新训练。测试初始条件包括 $(1.01,1,1)$、$(1.1,1,1)$、$(-5,5,20)$ 和 $(10,10,10)$。
-
-图 \ref{fig:ic_rmse} 展示了不同初始条件下的状态 RMSE。图中 IC1--IC4 分别对应 $(1.01,1,1)$、$(1.1,1,1)$、$(-5,5,20)$ 和 $(10,10,10)$。结果表明，非线性模型在新初值轨迹上仍明显优于 Persistence 和 Linear Regression，但误差水平会随初始条件和轨迹分布变化而波动。这说明模型具有一定局部泛化能力，但其泛化仍受到训练轨迹覆盖范围限制。
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/initial_condition_rmse.png}
-\caption{不同初始条件下的状态预测泛化误差。非线性模型通常优于简单基线，但不同初始条件对应的相空间覆盖差异会改变误差水平。}
-\label{fig:ic_rmse}
-\end{figure}
-
-\subsection{残差状态转移建模与模型增强}
-
-为了进一步分析什么样的模型结构更适合 Lorenz 系统的连续状态转移映射，本文加入输出标准化、Residual MLP、MLP 结构和激活函数消融，以及 ESN 对照。表 \ref{tab:model_enhancement} 只展示代表性结果，完整消融结果见 \texttt{results/model\_enhancement\_results.csv}。
+表 \ref{tab:residual_metrics} 比较 Direct MLP 与 Residual MLP，数值来自 \texttt{results/model\_enhancement\_results.csv}。Residual MLP 在 $k=10$ 和 $k=100$ 上显著降低状态 RMSE；在 $k=500$ 下仍优于 Direct MLP，但误差已经较大，说明残差学习不能消除混沌系统长期预测困难。
 
 \begin{table}[H]
 \centering
-\caption{模型增强实验的代表性结果（来自 \texttt{model\_enhancement\_results.csv}）}
-\label{tab:model_enhancement}
+\caption{Direct MLP 与 Residual MLP 的代表性结果（来自 \texttt{model\_enhancement\_results.csv}）。Residual MLP 学习状态增量，在中短期更符合连续动力系统局部变化结构。}
+\label{tab:residual_metrics}
 \begin{tabular}{rlcc}
 \toprule
 Horizon & 模型 & State RMSE & $R^2_{mean}$ \\
 \midrule
-10 & 原始 MLP & 0.4130 & 0.9993 \\
-10 & Residual MLP ReLU 64-64-64 & 0.0833 & 0.99997 \\
-10 & ESN residual & 0.4622 & 0.9991 \\
-100 & 原始 MLP & 2.1529 & 0.9800 \\
-100 & Residual MLP ReLU 64-64-64 & 0.8306 & 0.9970 \\
-100 & ESN residual & 76.8359 & -25.6248 \\
-500 & 原始 MLP & 14.0980 & 0.1245 \\
-500 & Residual MLP ReLU 64-64-64 & 12.0584 & 0.3609 \\
-500 & Random Forest 基线 & 10.9789 & 0.4714 \\
+10 & Direct MLP & 0.4130 & 0.9993 \\
+10 & Residual MLP & 0.0833 & 1.0000 \\
+100 & Direct MLP & 2.1529 & 0.9800 \\
+100 & Residual MLP & 0.8306 & 0.9970 \\
+500 & Direct MLP & 14.0980 & 0.1245 \\
+500 & Residual MLP & 12.0584 & 0.3609 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-图 \ref{fig:model_enhancement} 展示了不同增强模型在 $k=10$、100、500 下的状态 RMSE。为避免 ESN 在长步长上的极端误差压缩其他模型的可读性，该图只绘制主要 MLP 变体和基线模型，ESN 结果保留在表格和文字讨论中。结果表明，输出标准化和残差学习在短期和中期预测中明显改善 MLP 表现；其中更深的 ReLU Residual MLP 在 $k=10$ 和 $k=100$ 上表现最好。但当 $k$ 增大到 500 时，各类 MLP 都出现明显退化，Random Forest 反而保持相对较低误差。这说明模型结构改进可以扩大可预测时间窗，但不能消除混沌系统长期预测困难。
-
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/model_enhancement_horizon_rmse.png}
-\caption{Residual MLP 与输出标准化在不同预测步长下的对比。残差学习在短中期明显降低误差，但较长 horizon 下仍受到混沌误差放大的限制。}
+\includegraphics[width=0.92\textwidth]{figures/model_enhancement_horizon_rmse.png}
+\caption{Residual MLP 与 Direct MLP 在不同 horizon 下的对比。残差学习在短中期明显降低误差，但较长 horizon 下仍受到混沌误差放大的限制。}
 \label{fig:model_enhancement}
 \end{figure}
 
-图 \ref{fig:enhanced_rollout_error} 展示了增强模型在 500 步递归多步推演中的误差。Residual MLP tanh 64-64 的累计状态 RMSE 约为 11.1571，优于原始 MLP rollout 的 19.8142；ESN residual 的累计状态 RMSE 约为 14.3415，表现中等但提供了动力系统时间序列模型视角。
+\subsection{不完美物理模型的预测误差}
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/enhanced_rollout_error.png}
-\caption{增强模型递归多步推演误差曲线。Residual MLP tanh 在本次 500 步推演中累计误差最低，但仍无法避免长期偏离。}
-\label{fig:enhanced_rollout_error}
-\end{figure}
+Hybrid 实验中，真实系统使用 $\rho=28$，不完美物理模型使用 $\rho=26$。该物理模型并非完全错误：它仍保留 Lorenz 方程结构，只是关键参数存在偏差。单独使用该模型时，一步 State RMSE 为 0.0786，但在 recursive rollout 中会逐渐偏离真实轨迹；500 步窗口内有效预测时间约为 0.3465 个 Lyapunov time，最终累计 State RMSE 为 19.6795。这些数值来自 \texttt{results/hybrid\_metrics.csv} 和 \texttt{results/valid\_prediction\_time.csv}。
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/enhanced_rollout_x_comparison.png}
-\caption{增强模型递归多步推演中 $x(t)$ 的真实值与预测值对比。短期贴合较好，但长期相位误差逐渐显现。}
-\label{fig:enhanced_rollout_x}
-\end{figure}
+\subsection{Hybrid RF 与 Hybrid MLP 的残差修正效果}
 
-\subsection{SINDy 稀疏动力学识别}
-
-前述模型主要回答“能否预测未来状态”，但没有直接说明模型是否恢复了 Lorenz 系统的方程结构。表 \ref{tab:sindy_coefficients} 展示了 SINDy 从轨迹数据中恢复出的非零项，数值来自 \texttt{results/sindy\_coefficients.csv}。可以看到，恢复结果接近真实 Lorenz 方程：$dx/dt$ 主要由 $-x$ 和 $y$ 控制，$dy/dt$ 包含 $x$、$y$ 和 $xz$，$dz/dt$ 包含 $xy$ 和 $z$。这说明数据中确实包含可被稀疏方法识别的动力学结构。
+表 \ref{tab:hybrid_metrics} 比较不完美物理模型、Pure ML Residual MLP、Hybrid RF 和 Hybrid MLP 的一步预测结果，数值来自 \texttt{results/hybrid\_metrics.csv}。Hybrid correction 将机器学习模型用于学习物理模型残差，在当前 $\rho=26$ 参数偏差设定下显著降低一步误差。
 
 \begin{table}[H]
 \centering
-\caption{SINDy 恢复的 Lorenz 方程主要非零系数（来自 \texttt{sindy\_coefficients.csv}）}
-\label{tab:sindy_coefficients}
-\begin{tabular}{lccc}
-\toprule
-候选项 & $dx/dt$ & $dy/dt$ & $dz/dt$ \\
-\midrule
-$x$ & -9.9943 & 27.9517 & 0 \\
-$y$ & 9.9943 & -0.9906 & 0 \\
-$z$ & 0 & 0 & -2.6646 \\
-$xy$ & 0 & 0 & 0.9992 \\
-$xz$ & 0 & -0.9986 & 0 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-表 \ref{tab:sindy_true_vs_identified} 进一步对照真实 Lorenz 系数与 SINDy 识别系数。误差列来自 \texttt{results/sindy\_equation\_error.csv} 的绝对值。除 $dy/dt$ 中 $x$ 项误差约 0.0483 外，主要非零项误差均在 $10^{-2}$ 或更低量级。
-
-\begin{table}[H]
-\centering
-\caption{真实系数与 SINDy 识别系数对照}
-\label{tab:sindy_true_vs_identified}
-\begin{tabular}{llccc}
-\toprule
-方程 & 项 & 真实系数 & SINDy 系数 & 绝对误差 \\
-\midrule
-$dx/dt$ & $x$ & -10.0000 & -9.9943 & 0.0057 \\
-$dx/dt$ & $y$ & 10.0000 & 9.9943 & 0.0057 \\
-$dy/dt$ & $x$ & 28.0000 & 27.9517 & 0.0483 \\
-$dy/dt$ & $y$ & -1.0000 & -0.9906 & 0.0094 \\
-$dy/dt$ & $xz$ & -1.0000 & -0.9986 & 0.0014 \\
-$dz/dt$ & $xy$ & 1.0000 & 0.9992 & 0.0008 \\
-$dz/dt$ & $z$ & -2.6667 & -2.6646 & 0.0020 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.82\textwidth]{figures/sindy_coefficients.png}
-\caption{SINDy 恢复的 Lorenz 方程系数热力图。非零系数集中在真实 Lorenz 方程对应的少数项上，体现了稀疏结构识别的可解释性。}
-\label{fig:sindy_coefficients}
-\end{figure}
-
-图 \ref{fig:sindy_rollout} 展示了 SINDy 恢复方程的 500 步 rollout。由于恢复方程接近真实方程，短期轨迹能够较好贴合真实 $x(t)$；但由于 Lorenz 系统本身对误差敏感，即使方程系数只有很小偏差，长期逐点轨迹仍可能逐渐分离。因此，SINDy 的价值主要在于恢复动力学结构，而不是保证无限长期逐点预测。
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.88\textwidth]{figures/sindy_rollout_x_comparison.png}
-\caption{SINDy 恢复方程递归推演中 $x(t)$ 的真实值与预测值对比。系数误差较小时短期可贴合真实轨迹，但混沌敏感性仍会导致长期分离。}
-\label{fig:sindy_rollout}
-\end{figure}
-
-\subsection{物理-机器学习混合修正}
-
-为了模拟真实科学建模中“已有物理模型但参数有偏”的情况，本文构造了一个不完美 Lorenz 模型，将 $\rho$ 从真实值 28 改为 26。Hybrid correction 并不是用机器学习替代物理模型，而是让物理模型承担主要演化，再由机器学习学习不完美物理一步预测的残差。表 \ref{tab:hybrid_metrics} 比较了一步预测误差，数值来自 \texttt{results/hybrid\_metrics.csv}。可以看到，不完美物理模型的一步状态 RMSE 为 0.0786；pure ML residual MLP 为 0.0102；Hybrid RF 和 Hybrid MLP 通过学习物理模型残差，将一步状态 RMSE 进一步降至 0.0003 和 0.0006。
-
-\begin{table}[H]
-\centering
-\caption{不完美物理模型、Pure ML 与 Hybrid correction 的一步状态预测结果（来自 \texttt{hybrid\_metrics.csv}）}
+\caption{不完美物理模型、Pure ML 与 Hybrid correction 的一步状态预测结果（来自 \texttt{hybrid\_metrics.csv}）。}
 \label{tab:hybrid_metrics}
 \begin{tabular}{lcc}
 \toprule
 模型 & State RMSE & $R^2_{mean}$ \\
 \midrule
-Imperfect physics & 0.0786 & 0.9999747 \\
-Pure ML Residual MLP & 0.0102 & 0.9999996 \\
+Imperfect physics & 0.0786 & 0.9999746657 \\
+Pure ML Residual MLP & 0.0102 & 0.9999995570 \\
 Hybrid RF & 0.0003 & 0.9999999996 \\
 Hybrid MLP & 0.0006 & 0.9999999986 \\
 \bottomrule
@@ -439,24 +350,24 @@ Hybrid MLP & 0.0006 & 0.9999999986 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.82\textwidth]{figures/hybrid_one_step_metrics.png}
-\caption{不完美物理模型、Pure ML 与 Hybrid correction 的一步状态 RMSE 对比。残差修正显著降低了由 $\rho=26$ 参数偏差引入的一步误差。}
+\caption{不完美物理模型、Pure ML 与 Hybrid correction 的一步状态 RMSE 对比。Hybrid RF 和 Hybrid MLP 显著降低了由 $\rho=26$ 参数偏差引入的一步误差。}
 \label{fig:hybrid_one_step}
 \end{figure}
 
-在 500 步 recursive rollout 中，Hybrid correction 的优势更明显。表 \ref{tab:valid_prediction_time} 使用经验状态误差阈值 5.5234 计算有效预测时间，并换算为 Lyapunov time，数值来自 \texttt{results/valid\_prediction\_time.csv}。Imperfect physics 约在 0.35 个 Lyapunov time 后失效；Pure ML residual MLP 可维持约 1.86 个 Lyapunov time；Hybrid RF 和 Hybrid MLP 在 500 步窗口内均未超过阈值，对应至少 2.25 个 Lyapunov time。由于窗口长度只有 500 步，这里的 2.25 是下界而非真实失效时间。
+在 500 步 recursive rollout 中，Hybrid correction 也保持了更长有效预测时间。表 \ref{tab:valid_prediction_time} 的数值来自 \texttt{results/valid\_prediction\_time.csv}。Hybrid RF 和 Hybrid MLP 在 500 步窗口内均未超过经验失效阈值，因此 2.2502 个 Lyapunov time 是当前窗口下界，而不是理论上限。
 
 \begin{table}[H]
 \centering
-\caption{500 步 rollout 中的有效预测时间（来自 \texttt{valid\_prediction\_time.csv}）}
+\caption{500 步 rollout 中的有效预测时间（来自 \texttt{valid\_prediction\_time.csv}）。Hybrid correction 在当前参数偏差设置下明显减缓误差累积。}
 \label{tab:valid_prediction_time}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-模型 & 有效步数 & 物理时间 & Lyapunov time \\
+模型 & 有效步数 & 物理时间 & Lyapunov time & 最终累计 State RMSE \\
 \midrule
-Imperfect physics & 77 & 0.3850 & 0.3465 \\
-Pure ML Residual MLP & 413 & 2.0652 & 1.8587 \\
-Hybrid RF & 500 & 2.5003 & 2.2502 \\
-Hybrid MLP & 500 & 2.5003 & 2.2502 \\
+Imperfect physics & 77 & 0.3850 & 0.3465 & 19.6795 \\
+Pure ML Residual MLP & 413 & 2.0652 & 1.8587 & 11.1571 \\
+Hybrid RF & 500 & 2.5003 & 2.2502 & 0.7774 \\
+Hybrid MLP & 500 & 2.5003 & 2.2502 & 0.0862 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -464,57 +375,53 @@ Hybrid MLP & 500 & 2.5003 & 2.2502 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.88\textwidth]{figures/hybrid_rollout_error.png}
-\caption{Hybrid correction 在递归多步推演中的累计状态 RMSE。Hybrid RF 和 Hybrid MLP 在当前 $\rho=26$ 参数偏差设定下明显减缓误差累积。}
+\caption{Hybrid correction 在递归多步推演中的累计状态 RMSE。Hybrid RF 和 Hybrid MLP 在当前 $\rho=26$ 参数偏差设定下保持更低误差，但该结论不应外推到所有物理模型错误。}
 \label{fig:hybrid_rollout_error}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.82\textwidth]{figures/valid_prediction_time.png}
-\caption{不同模型的有效预测时间（以 Lyapunov time 归一化）。该图采用经验阈值 5.5234，因此应与误差曲线和长期统计量一起解读。}
-\label{fig:valid_prediction_time}
-\end{figure}
-
-最后，图 \ref{fig:long_term_distribution} 比较了真实轨迹与各模型 rollout 轨迹的长期分布。Hybrid MLP 的均值、标准差和分布形状与真实轨迹最接近，说明混合修正在当前参数偏差设置下不仅改善逐点预测，也有助于保持吸引子的统计结构。
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.95\textwidth]{figures/long_term_distribution_comparison.png}
-\caption{真实轨迹与不同 rollout 轨迹的长期分布对比。Hybrid MLP 的边缘分布最接近真实轨迹，表明残差修正有助于保持长期统计特征。}
-\label{fig:long_term_distribution}
 \end{figure}
 
 \section{讨论}
 
-\subsection{为什么短期预测容易}
+\subsection{为什么简单线性模型不够}
 
-Lorenz 方程虽然会产生混沌轨迹，但系统本身仍由连续微分方程控制。在足够短的时间尺度内，状态不会发生任意跳变，当前状态与短期未来状态之间存在平滑的局部映射。因此，Random Forest、MLP 和 Residual MLP 在小预测步长下取得较低状态 RMSE 是合理的；这说明机器学习模型能够拟合局部状态转移，而不是说明长期轨迹已经变得容易预测。
+Lorenz 系统包含 $xz$、$xy$ 等非线性项，系统演化不是简单线性映射。Linear Regression 可以作为短期局部近似和课程回归基线，但当 prediction horizon 增大时，它无法表达非线性耦合带来的复杂状态变化，因此误差迅速升高。
 
-\subsection{为什么长期预测困难}
+\subsection{为什么神经网络和树模型短期有效但长期受限}
 
-当预测步长增大时，模型需要跨越更长时间的非线性演化，局部近似误差会被系统动力学放大。递归多步推演进一步加剧了这一问题：模型在每一步都使用自己的预测作为下一步输入，早期误差会改变后续输入分布，并持续影响之后的预测。不同初始条件实验也说明，模型的泛化质量依赖训练轨迹覆盖范围；新轨迹虽然来自同一方程和参数，但在相空间中的覆盖区域不同，误差水平也会变化。
+短时间内，连续动力系统的状态转移具有局部连续性和平滑性，Random Forest 和 MLP 可以拟合这种局部非线性映射。这解释了它们在短 horizon 下优于线性模型的现象。但 Lorenz 系统具有初值敏感性，小误差会在动力系统中被放大。recursive rollout 还会让模型不断使用自己的预测作为输入，使得输入分布逐渐偏离训练时的真实轨迹分布。
 
-\subsection{模型结构改进的作用与局限}
+\subsection{为什么学习残差比直接预测更适合连续动力系统}
 
-Residual MLP 的优势来自任务形式本身。对连续动力系统而言，学习状态增量 $\Delta\mathbf{s}$ 比直接学习未来状态更接近数值积分思想；输出标准化则能避免某个状态分量因尺度较大而主导损失。实验中，更深的 ReLU Residual MLP 在 $k=10$ 和 $k=100$ 上表现最好，而 tanh Residual MLP 在 rollout 中更稳定，说明结构设计和激活函数都会影响可预测窗口。
+对连续动力系统而言，短时间内未来状态通常可以看作“当前状态 + 状态变化量”。Residual MLP 学习 $\mathbf{s}_{t+k}-\mathbf{s}_t$，比直接学习 $\mathbf{s}_{t+k}$ 更贴近数值积分思想，也让模型集中拟合局部变化。因此，它在 $k=10$ 和 $k=100$ 上明显优于 Direct MLP。然而，当 $k=500$ 时，系统已经经历较长非线性演化，残差学习仍无法避免混沌系统长期逐点预测困难。
 
-ESN 提供了动力系统时间序列模型视角，但本文中的轻量 ESN 并未全面超过 Residual MLP。尤其在较长步长的直接预测中，ESN residual 出现明显失效。这表明 reservoir computing 的效果依赖 reservoir 规模、谱半径、泄漏率和 readout 正则化等设置，不能简单认为加入 ESN 就一定优于普通 MLP。
+\subsection{Hybrid correction 与 AI for Science 的关系}
 
-\subsection{SINDy 与 Hybrid correction 的互补性}
+现实科学问题中通常已有近似物理模型，而不是完全从零开始。Hybrid correction 的价值在于：机器学习不必学习全部动力学规律，而是学习物理模型的系统误差。本文中，不完美物理模型只把 $\rho$ 从 28 改为 26，仍会在 rollout 中逐渐偏离真实轨迹；Hybrid RF 和 Hybrid MLP 学习该偏差带来的一步残差后，显著降低误差并延长有效预测时间。这体现了“物理模型 + 数据驱动修正”的科学机器学习思想。
 
-SINDy 与 Hybrid correction 分别代表两种不同的 AI4SCI 思路。SINDy 的重点是结构识别：它从数据中恢复显式方程，增强可解释性。Hybrid correction 的重点是误差校正：它不要求机器学习模型重新发现全部物理规律，而是让已有物理模型承担主导演化，再学习其残差。二者都说明科学机器学习不应只关注黑箱预测误差，还应关注模型结构、物理先验和误差来源。
+\subsection{局限性}
 
-在本文中，不完美物理模型只把 $\rho$ 从 28 改为 26，已经会在递归推演中快速偏离真实轨迹；而 Hybrid RF 和 Hybrid MLP 学到的残差修正显著延长了有效预测时间。这说明机器学习并不一定要替代物理模型，更有价值的用法之一是作为物理模型的误差校正器。但这一结论只适用于当前参数偏差和数据设置，不能外推到任意物理模型错误。
-
-\subsection{本文局限}
-
-本文仍是一个课程项目规模的实验研究。训练数据主要来自固定参数和有限初始条件下的模拟轨迹；模型只比较了若干常见机器学习方法、轻量 ESN、手写 SINDy 和简单 hybrid residual correction；ESN 和 SINDy 阈值未进行系统调参；Hybrid 实验只测试了 $\rho=26$ 这一种参数偏差。因此，本文更适合作为“短期可学、结构可识别、混合修正在有限场景下有效但长期受限”的预测边界分析，而不是对所有混沌系统预测方法的完整评测。
+本文仍是 AI 导论课程规模的小项目。训练数据来自有限参数和有限初始条件下的模拟轨迹；Residual MLP 的网络结构只做了有限比较；Hybrid correction 只测试了 $\rho=26$ 这一种参数偏差；valid prediction time 使用经验阈值而非唯一标准。因此，本文结论应限定为当前实验设置下的预测边界分析，不能推广为任意混沌系统或任意物理模型错误都可由机器学习修正。
 
 \section{结论}
 
-本文围绕 Lorenz 混沌系统进行了状态预测、结构识别和物理残差校正实验。核心结论可以概括为四点。第一，短期局部动力学映射可学习：在小预测步长下，非线性模型能有效拟合 $\mathbf{s}_t\to\mathbf{s}_{t+k}$。第二，长期逐点预测仍受混沌误差放大限制：预测步长增大和递归多步推演都会造成误差快速增长。第三，SINDy 提供了显式结构识别能力，可以从轨迹数据中恢复接近真实 Lorenz 方程的稀疏项。第四，Hybrid correction 在本文 $\rho=26$ 参数偏差设定下显著改善不完美物理模型，但该结论应限于当前实验场景。
+本文以 Lorenz 混沌系统为对象，把 AI 导论课程中的回归、树模型和神经网络方法用于监督学习预测。实验表明，Linear Regression、Random Forest 和 MLP 可以用于短期状态预测，但普通黑箱模型在长 prediction horizon 和 recursive rollout 中会受到混沌误差放大限制。Residual MLP 通过学习状态增量改善了中短期预测；Hybrid correction 通过学习不完美物理模型残差，在当前 $\rho=26$ 参数偏差设定下显著改善一步预测和短中期 rollout，展示了机器学习辅助物理模型修正的 AI for Science 价值。
 
-未来工作可以进一步引入噪声鲁棒性测试、跨参数泛化实验、不同物理模型缺陷类型、horizon-conditioned MLP，以及对 ESN 的 reservoir 规模、谱半径、泄漏率和正则化系数进行系统调参。
+\appendix
+
+\section{超参数设置}
+
+本文使用的主要实现来自 scikit-learn \cite{pedregosa2011}。Linear Regression 使用默认最小二乘设置；Random Forest 使用 notebook 中保存的实验设置；Direct MLP 和 Residual MLP 使用多层感知机回归器，并在模型增强实验中比较了不同隐藏层规模和激活函数。输入标准化器只在训练集上拟合。完整可复现实验代码保存在 \texttt{lorenz\_chaos\_prediction.ipynb}，主要数值结果保存在 \texttt{results/*.csv}。
+
+\section{额外模型结果}
+
+Persistence Model 只作为 naive baseline：它直接用当前状态作为未来状态预测，能反映短时间连续性，但不作为主文重点。ESN 作为 reservoir computing 对照保留在结果文件中；在当前轻量设置下，ESN 没有稳定超过 Residual MLP，且解释成本高，因此不放入主线。MLP 激活函数、层数和 hidden size 消融结果保存在 \texttt{results/model\_enhancement\_results.csv}，主文只选取 Direct MLP 与 Residual MLP 的代表性对比。
+
+\section{LLM 辅助说明}
+
+本项目使用 LLM 辅助完成选题讨论、实验结构设计、代码组织建议和报告语言整理。LLM 未直接生成实验数值；报告中的指标均以 Python 程序输出的 \texttt{results/*.csv} 和 \texttt{results/summary.json} 为准。为减少手写表格与 CSV 不一致，本文新增 \texttt{scripts/generate\_report\_tables.py}，可从结果文件生成 \texttt{results/generated\_report\_tables.tex} 供核对。
+
+\section{未来工作：SINDy 方程发现}
+
+未来可以进一步引入 SINDy 等动力学方程识别方法，从数据中恢复显式控制方程。该方向有助于提升模型可解释性，但它不属于本文 AI 导论课程模型主线，因此本文只作为未来工作提及，不在主文展开。
 
 \begin{thebibliography}{99}
 
@@ -538,42 +445,6 @@ Strogatz, S. H. (2015).
 \textit{Nonlinear Dynamics and Chaos: With Applications to Physics, Biology, Chemistry, and Engineering}.
 Westview Press.
 
-\bibitem{lukosevicius2009}
-Luko\v{s}evi\v{c}ius, M., \& Jaeger, H. (2009).
-Reservoir computing approaches to recurrent neural network training.
-\textit{Computer Science Review}, 3(3), 127--149.
-
-\bibitem{brunton2016}
-Brunton, S. L., Proctor, J. L., \& Kutz, J. N. (2016).
-Discovering governing equations from data by sparse identification of nonlinear dynamical systems.
-\textit{Proceedings of the National Academy of Sciences}, 113(15), 3932--3937.
-
-\bibitem{raissi2019}
-Raissi, M., Perdikaris, P., \& Karniadakis, G. E. (2019).
-Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations.
-\textit{Journal of Computational Physics}, 378, 686--707.
-
-\bibitem{karniadakis2021}
-Karniadakis, G. E., Kevrekidis, I. G., Lu, L., Perdikaris, P., Wang, S., \& Yang, L. (2021).
-Physics-informed machine learning.
-\textit{Nature Reviews Physics}, 3, 422--440.
-
 \end{thebibliography}
-
-\appendix
-
-\section{LLM 辅助说明}
-
-本项目使用 LLM 辅助完成选题讨论、实验结构设计、Notebook 代码组织、结果解释和报告语言整理。LLM 未参与数值结果的生成，所有指标均由 Python 程序和 CSV 输出得到。报告中的实验结果以实际运行的 Notebook、\texttt{results/*.csv} 输出和图表文件为准；Lorenz 方程、数据切分、标准化流程、rollout 是否使用真实未来状态等关键环节均经过人工检查。
-
-代表性提示词包括：
-
-\begin{enumerate}
-    \item “选择 Lorenz 混沌系统作为项目题目，并设计机器学习建模路线。”
-    \item “请加入标准化、回归模型和 RMSE/MAE/$R^2$ 评价指标。”
-    \item “请评估当前项目的研究深度，并提出更有说服力的实验增强方案。”
-    \item “把项目增强为预测步长、三维状态预测、递归多步预测和跨初始条件泛化分析。”
-    \item “比较 Direct MLP、Residual MLP、输出标准化、激活函数和 Echo State Network。”
-\end{enumerate}
 
 \end{document}

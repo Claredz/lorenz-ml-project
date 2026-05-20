@@ -1,0 +1,40 @@
+% Direct prediction metrics from results/model_metrics.csv
+Linear Regression & 0.5457 & 0.4437 & 0.9952 \\
+Random Forest & 0.0805 & 0.0507 & 0.9999 \\
+MLP & 0.0757 & 0.0599 & 0.9999 \\
+
+% Representative horizon metrics from results/horizon_results.csv
+10 & Linear Regression & 4.7791 & 0.9028 \\
+10 & Random Forest & 0.3425 & 0.9995 \\
+10 & MLP & 0.4130 & 0.9993 \\
+100 & Linear Regression & 15.4505 & -0.0793 \\
+100 & Random Forest & 3.1292 & 0.9569 \\
+100 & MLP & 2.1529 & 0.9800 \\
+500 & Linear Regression & 15.2982 & -0.0292 \\
+500 & Random Forest & 10.9789 & 0.4714 \\
+500 & MLP & 14.0980 & 0.1245 \\
+
+% Rollout final cumulative RMSE from results/rollout_results.csv
+Linear Regression & 500 & 20.2244 \\
+Random Forest & 500 & 14.5356 \\
+MLP & 500 & 19.8142 \\
+
+% Direct MLP vs Residual MLP from results/model_enhancement_results.csv
+10 & Direct MLP & 0.4130 & 0.9993 \\
+10 & Residual MLP & 0.0833 & 1.0000 \\
+100 & Direct MLP & 2.1529 & 0.9800 \\
+100 & Residual MLP & 0.8306 & 0.9970 \\
+500 & Direct MLP & 14.0980 & 0.1245 \\
+500 & Residual MLP & 12.0584 & 0.3609 \\
+
+% Hybrid one-step metrics from results/hybrid_metrics.csv
+Imperfect physics & 0.0786 & 0.9999746657 \\
+Pure ML Residual MLP & 0.0102 & 0.9999995570 \\
+Hybrid RF & 0.0003 & 0.9999999996 \\
+Hybrid MLP & 0.0006 & 0.9999999986 \\
+
+% Valid prediction time from results/valid_prediction_time.csv
+Imperfect physics & 77 & 0.3850 & 0.3465 & 19.6795 \\
+Pure ML Residual MLP & 413 & 2.0652 & 1.8587 & 11.1571 \\
+Hybrid RF & 500 & 2.5003 & 2.2502 & 0.7774 \\
+Hybrid MLP & 500 & 2.5003 & 2.2502 & 0.0862 \\

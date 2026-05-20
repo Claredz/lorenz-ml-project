@@ -1,328 +1,253 @@
-# 基于机器学习的 Lorenz 混沌系统状态预测与预测边界分析
+# 基于监督学习与物理残差修正的 Lorenz 混沌系统预测研究
 
-**English Title:** Machine Learning for Lorenz Chaotic System State Prediction and Forecasting Boundary Analysis
+**English Title:** Lorenz Chaotic System Prediction with Supervised Learning and Physics Residual Correction
 
-## 项目背景
+## 项目简介
 
-本项目是《人工智能导论》期末小组项目，主题属于数学建模与 AI4SCI 方向。Lorenz 系统是非线性动力系统和混沌理论中的经典模型，具有确定性方程、非线性耦合和初值敏感性等特点。
+本项目以 Lorenz 混沌系统为对象，使用 AI 导论课程中的回归、树模型和神经网络方法进行监督学习预测，并进一步通过 Hybrid correction 学习不完美物理模型的残差，展示机器学习在科学建模中的误差修正作用。
 
-项目原始任务是：使用 Python 数值模拟生成 Lorenz 系统数据，并将连续动力系统预测问题转化为监督学习回归任务，即给定当前状态变量 `x_t`, `y_t`, `z_t`，预测短期未来的 `x_next = x(t + 10Δt)`。
+项目主线是：
 
-增强后的项目进一步扩展为完整三维状态转移预测：
+1. 使用 Lorenz 方程生成混沌系统轨迹；
+2. 构造监督学习任务：用当前状态预测未来状态；
+3. 使用 Linear Regression、Random Forest 和 MLP 进行直接预测；
+4. 分析 prediction horizon 和 recursive rollout 中的误差累积；
+5. 使用 Residual MLP 学习状态增量；
+6. 使用 Hybrid RF / Hybrid MLP 学习不完美物理模型的残差。
 
-```text
-(x_t, y_t, z_t) -> (x_{t+k}, y_{t+k}, z_{t+k})
-```
+本项目不声称机器学习解决了混沌系统长期预测问题。核心结论是：短期局部状态转移可学，但长期逐点预测受混沌误差放大限制；在当前 `rho=26` 的参数偏差设定下，Hybrid correction 能显著改善不完美物理模型的预测效果。
 
-重点不再只是证明短期预测可以取得很高精度，而是分析机器学习模型在 Lorenz 混沌系统中的预测边界：短期局部状态转移可学习，但预测步长增大、递归多步预测和初始条件变化会暴露长期预测限制。
+## 课程内容对应关系
 
-## Lorenz 方程
+| 课程内容 | 项目对应方法 | 作用 |
+|---|---|---|
+| 回归 | Linear Regression | 基础回归基线 |
+| 树模型 | Random Forest Regressor | 非线性树模型预测 |
+| 神经网络 | MLP / Residual MLP | 直接状态预测与状态增量学习 |
+| AI for Science | Hybrid correction | 用机器学习修正不完美物理模型残差 |
 
-Lorenz 系统由以下三个常微分方程组成：
+SINDy 和 ESN 不作为本项目主线。SINDy 只作为未来可扩展方向：可用于从数据中恢复显式动力学方程；ESN 作为额外对照保留在结果文件中，但不放在主文重点。
 
-$$
+## 数据来源
+
+数据由 Lorenz 方程数值模拟生成，不使用外部数据集：
+
+```math
 \frac{dx}{dt}=\sigma(y-x)
-$$
+```
 
-$$
+```math
 \frac{dy}{dt}=x(\rho-z)-y
-$$
+```
 
-$$
+```math
 \frac{dz}{dt}=xy-\beta z
-$$
+```
 
-本项目采用经典参数：
+真实系统参数为：
 
-$$
+```math
 \sigma=10,\quad \rho=28,\quad \beta=\frac{8}{3}
-$$
-
-## 数据生成方法
-
-数据由 Lorenz 方程数值模拟生成：
-
-1. 使用 `scipy.integrate.solve_ivp` 求解 Lorenz 微分方程；
-2. 原始训练轨迹初始状态为 `(1, 1, 1)`；
-3. 模拟时间范围为 `[0, 50]`；
-4. 采样点数为 `10000`；
-5. 构造监督学习数据集。
-
-原始任务使用单变量目标：
-
-- 输入特征：`x_t`, `y_t`, `z_t`
-- 预测目标：`x_next = x(t + 10Δt)`
-
-增强任务使用完整状态目标：
-
-- 输入特征：`x_t`, `y_t`, `z_t`
-- 预测目标：`x_{t+k}`, `y_{t+k}`, `z_{t+k}`
-
-## 模型角色
-
-本项目保留并增强以下模型，各自承担不同分析角色：
-
-1. **Persistence Model**  
-   连续性基线，直接使用当前状态作为未来状态预测，用于衡量系统短期连续性本身能带来多少预测能力。
-
-2. **Linear Regression**  
-   局部线性化基线，用线性映射近似局部状态转移。
-
-3. **Random Forest Regressor**  
-   传统非线性机器学习强基线，用于比较树模型在不同预测步长下的稳定性。
-
-4. **MLPRegressor**  
-   基本神经网络状态转移模型，用多层感知机学习非线性状态转移映射。
-
-5. **Residual MLP**  
-   预测状态变化量 `Δs = s_{t+k} - s_t`，再还原未来状态，贴近数值积分中的“当前状态 + 增量”思想。
-
-6. **Echo State Network / Reservoir Computing**  
-   Dynamical time-series model，用固定随机 reservoir 提取时序动态特征，再训练线性 readout。
-
-7. **SINDy / Sparse Identification of Nonlinear Dynamics**  
-   从轨迹数据中估计导数，在多项式候选函数库中用稀疏回归恢复 Lorenz 方程结构，用于回答模型是否学到了动力学规律。
-
-8. **Hybrid Physical-ML Correction**  
-   构造参数有偏的不完美 Lorenz 物理模型，再用机器学习学习真实系统与物理预测之间的残差，体现 AI4SCI 中“物理模型 + 数据驱动误差修正”的思路。
-
-项目没有盲目添加 KNN、SVR、XGBoost 等普通模型，因为本项目重点是预测任务设计、动力系统状态转移结构和误差分析，而不是堆叠模型列表。
-
-## 新增实验
-
-### 1. Prediction horizon sensitivity
-
-测试 horizon：
-
-```text
-k = [1, 5, 10, 20, 50, 100, 200, 500]
 ```
 
-对每个 `k` 构造完整三维状态预测任务：
+基础轨迹设置：
+
+- 初始状态：`(1, 1, 1)`；
+- 模拟时间：`[0, 50]`；
+- 采样点数：`10000`；
+- 数值求解：`scipy.integrate.solve_ivp`；
+- 训练/测试切分：按时间顺序前 80% / 后 20%。
+
+## 主要方法
+
+### 1. 直接状态预测
+
+输入当前状态：
 
 ```text
-(x_t, y_t, z_t) -> (x_{t+k}, y_{t+k}, z_{t+k})
+s_t = (x_t, y_t, z_t)
 ```
 
-输出文件：
-
-- `results/horizon_results.csv`
-- `figures/horizon_vs_rmse.png`
-
-### 2. 三维状态预测
-
-增强实验将模型输出从单一 `x` 值扩展为完整状态向量 `(x, y, z)`，并计算：
+预测未来状态：
 
 ```text
-RMSE_state = sqrt(mean(||s_true - s_pred||^2))
+s_{t+k} = (x_{t+k}, y_{t+k}, z_{t+k})
 ```
 
-同时保存每个状态分量的 RMSE、MAE、R²。
+使用模型：
 
-### 3. Recursive multi-step rollout
+- Linear Regression；
+- Random Forest；
+- MLP。
 
-训练 one-step 状态转移模型：
+### 2. Residual MLP
+
+Residual MLP 不直接预测未来状态，而是预测状态变化量：
 
 ```text
-(x_t, y_t, z_t) -> (x_{t+1}, y_{t+1}, z_{t+1})
+Δs = s_{t+k} - s_t
+s_hat_{t+k} = s_t + MLP(s_t)
 ```
 
-然后从测试段某个真实状态出发，只给模型一次真实初始状态，后续每一步都使用模型自己的预测作为下一步输入，连续 rollout 500 步。
+该形式更符合连续动力系统“当前状态 + 局部增量”的结构。
 
-输出文件：
+### 3. Hybrid correction
 
-- `results/rollout_results.csv`
-- `figures/rollout_error.png`
-- `figures/rollout_x_comparison.png`
-- `figures/rollout_attractor.png`
-
-### 4. Initial-condition generalization
-
-模型仍然主要在 `(1, 1, 1)` 轨迹上训练，不对新初始条件重新训练。新增测试轨迹包括：
+真实系统使用 `rho=28`，不完美物理模型使用 `rho=26`。先由不完美物理模型预测：
 
 ```text
-(1.01, 1, 1)
-(1.1, 1, 1)
-(-5, 5, 20)
-(10, 10, 10)
+s_phys(t+1)
 ```
 
-输出文件：
-
-- `results/initial_condition_generalization.csv`
-- `figures/initial_condition_rmse.png`
-
-### 5. Model enhancement experiments
-
-模型增强实验进一步测试什么样的结构更适合学习 Lorenz 系统的连续状态转移映射：
-
-- 对输出 `Y=(x,y,z)` 或 `ΔY` 使用 `StandardScaler`；
-- 比较 direct MLP 与 residual MLP；
-- 比较 `[32,32]`、`[64,64]`、`[128,128]`、`[64,64,64]` 等 MLP 容量；
-- 比较 ReLU 与 tanh 激活函数；
-- 加入轻量 Echo State Network 作为动力系统时间序列模型。
-
-输出文件：
-
-- `results/model_enhancement_results.csv`
-- `results/enhanced_rollout_results.csv`
-- `figures/model_enhancement_horizon_rmse.png`
-- `figures/enhanced_rollout_error.png`
-- `figures/enhanced_rollout_x_comparison.png`
-
-### 6. SINDy sparse dynamics identification
-
-SINDy 实验将项目从“预测未来状态”进一步扩展到“从数据中识别动力学结构”。实验使用中心差分估计 `dx/dt, dy/dt, dz/dt`，构造候选库：
+再训练机器学习模型学习残差：
 
 ```text
-1, x, y, z, x^2, xy, xz, y^2, yz, z^2
+residual = s_true(t+1) - s_phys(t+1)
+hybrid_prediction = s_phys(t+1) + ML_residual
 ```
 
-再使用 sequential thresholded least squares 恢复 Lorenz 方程的稀疏非零项。
+比较对象：
 
-输出文件：
+- Imperfect physics；
+- Pure ML Residual MLP；
+- Hybrid RF；
+- Hybrid MLP。
 
-- `results/sindy_coefficients.csv`
-- `results/sindy_equation_error.csv`
-- `figures/sindy_coefficients.png`
-- `figures/sindy_rollout_x_comparison.png`
+## 实验结构
 
-### 7. Hybrid physical-ML correction
+1. **直接监督学习预测**  
+   比较 Linear Regression、Random Forest、MLP 的短期预测能力。
 
-Hybrid 实验模拟真实科学建模中“已有物理模型但参数有偏”的情况。真实系统使用 `rho=28`，不完美物理模型故意使用 `rho=26`。机器学习模型不直接替代物理模型，而是学习：
+2. **Prediction horizon 分析**  
+   代表性 horizon：`k=10, 100, 500`。完整结果见 `results/horizon_results.csv`。
 
-```text
-residual = s_true(t+1) - s_physics(t+1)
-hybrid_prediction = s_physics(t+1) + ML_residual
-```
+3. **Recursive rollout 分析**  
+   只给定初始真实状态，后续不断使用模型自身预测作为下一步输入，观察误差累积。
 
-比较对象包括 imperfect physics、pure ML residual MLP、Hybrid RF 和 Hybrid MLP。评价指标新增 valid prediction time，并用 Lorenz63 最大 Lyapunov 指数约 `0.9` 将物理时间换算为 Lyapunov time。
+4. **Residual MLP 对比**  
+   比较 Direct MLP 与 Residual MLP，分析状态增量学习是否改善中短期预测。
 
-输出文件：
-
-- `results/hybrid_metrics.csv`
-- `results/hybrid_rollout_results.csv`
-- `results/valid_prediction_time.csv`
-- `results/long_term_statistics.csv`
-- `figures/hybrid_one_step_metrics.png`
-- `figures/hybrid_rollout_error.png`
-- `figures/valid_prediction_time.png`
-- `figures/long_term_distribution_comparison.png`
+5. **不完美物理模型与 Hybrid correction**  
+   比较单独使用参数有偏物理模型、纯机器学习模型和物理残差修正模型。
 
 ## 主要结果
 
-原始单变量短期预测任务中，非线性模型在 `x(t+10Δt)` 上取得了很高精度：
+### 直接短期预测
+
+原始课程任务 `x(t+10Δt)` 的结果来自 `results/model_metrics.csv`：
 
 | 模型 | RMSE | MAE | R² |
 |---|---:|---:|---:|
-| Persistence Model | 2.2104 | 1.8254 | 0.9208 |
 | Linear Regression | 0.5457 | 0.4437 | 0.9952 |
 | Random Forest | 0.0805 | 0.0507 | 0.9999 |
 | MLP | 0.0757 | 0.0599 | 0.9999 |
 
-增强实验表明，完整三维状态预测在短 horizon 下仍较准确，但随着 horizon 增大误差明显上升。例如：
+这说明短期局部映射可以被非线性模型拟合，但不能推出长期混沌预测已经解决。
+
+### Prediction horizon
+
+代表性三维状态预测结果来自 `results/horizon_results.csv`：
 
 | Horizon | 模型 | State RMSE | Mean R² |
 |---:|---|---:|---:|
+| 10 | Linear Regression | 4.7791 | 0.9028 |
 | 10 | Random Forest | 0.3425 | 0.9995 |
 | 10 | MLP | 0.4130 | 0.9993 |
+| 100 | Linear Regression | 15.4505 | -0.0793 |
 | 100 | Random Forest | 3.1292 | 0.9569 |
 | 100 | MLP | 2.1529 | 0.9800 |
+| 500 | Linear Regression | 15.2982 | -0.0292 |
 | 500 | Random Forest | 10.9789 | 0.4714 |
 | 500 | MLP | 14.0980 | 0.1245 |
 
-Recursive rollout 也显示，一步预测模型在递归使用时会出现明显误差累积。500 步 rollout 结束时，Linear Regression、Random Forest、MLP 的累计 state RMSE 分别约为 `20.2244`、`14.5356`、`19.8142`。
+随着 horizon 增大，各模型误差明显上升，说明普通监督学习预测存在时间尺度边界。
 
-模型增强实验进一步表明，Residual MLP 和输出标准化能显著改善中短期三维状态预测。例如 horizon=10 时，`MLP-residual-relu-64x64x64` 的 state RMSE 为 `0.0833`；horizon=100 时，该模型 state RMSE 为 `0.8306`，优于原始 MLP 的 `2.1529`。在 enhanced rollout 中，`MLP-residual-tanh-64x64` 的 500 步累计 state RMSE 约为 `11.1571`，优于原始 MLP rollout 的 `19.8142`。ESN 作为 reservoir computing 模型在本实验中表现中等，rollout 累计 state RMSE 约为 `14.3415`，可作为动力系统时间序列模型的补充对照。
+### Recursive rollout
 
-SINDy 实验从轨迹数据中恢复出接近真实 Lorenz 方程的稀疏结构：
+500 步 rollout 最终累计 State RMSE 来自 `results/rollout_results.csv`：
 
-```text
-dx/dt ≈ -9.9943x + 9.9943y
-dy/dt ≈ 27.9517x - 0.9906y - 0.9986xz
-dz/dt ≈ 0.9992xy - 2.6646z
-```
+| 模型 | Rollout 步数 | 最终累计 State RMSE |
+|---|---:|---:|
+| Linear Regression | 500 | 20.2244 |
+| Random Forest | 500 | 14.5356 |
+| MLP | 500 | 19.8142 |
 
-Hybrid correction 实验进一步表明，机器学习可以作为不完美物理模型的残差修正器。真实系统使用 `rho=28`，不完美物理模型使用 `rho=26` 时，一步 state RMSE 从 `0.0786` 降至 `0.0003`（Hybrid RF）和 `0.0006`（Hybrid MLP）。在 500 步 rollout 中，imperfect physics 的有效预测时间约为 `0.35` 个 Lyapunov time，pure ML residual MLP 约为 `1.86` 个 Lyapunov time，而 Hybrid RF 和 Hybrid MLP 在 500 步窗口内均未超过失效阈值，对应至少 `2.25` 个 Lyapunov time。
+Rollout 中模型不断使用自己的预测作为输入，早期误差会进入后续输入并持续累积。
 
-因此，本项目的主要结论是：机器学习模型可以较好学习 Lorenz 系统的短期局部状态转移映射；SINDy 可以从数据中识别动力学方程结构；Hybrid physical-ML correction 在当前 `rho=26` 参数偏差设定下可以显著改善不完美物理模型的短中期推演。但预测步长增大、递归多步预测和初始条件变化仍会使预测难度上升，不能将短期高精度夸大为“机器学习已经解决混沌系统长期预测”。
+### Residual MLP
 
-报告中的手写表格可用 `generate_report_tables.py` 从 `results/*.csv` 重新生成 LaTeX 片段，减少 CSV 与论文数值不一致。
+Direct MLP 与 Residual MLP 对比来自 `results/model_enhancement_results.csv`：
+
+| Horizon | 模型 | State RMSE | Mean R² |
+|---:|---|---:|---:|
+| 10 | Direct MLP | 0.4130 | 0.9993 |
+| 10 | Residual MLP | 0.0833 | 1.0000 |
+| 100 | Direct MLP | 2.1529 | 0.9800 |
+| 100 | Residual MLP | 0.8306 | 0.9970 |
+| 500 | Direct MLP | 14.0980 | 0.1245 |
+| 500 | Residual MLP | 12.0584 | 0.3609 |
+
+Residual MLP 在中短期预测中更好，但在很长 horizon 下仍会退化。
+
+### Hybrid correction
+
+一步预测结果来自 `results/hybrid_metrics.csv`：
+
+| 模型 | State RMSE | Mean R² |
+|---|---:|---:|
+| Imperfect physics | 0.0786 | 0.9999746657 |
+| Pure ML Residual MLP | 0.0102 | 0.9999995570 |
+| Hybrid RF | 0.0003 | 0.9999999996 |
+| Hybrid MLP | 0.0006 | 0.9999999986 |
+
+500 步 rollout 有效预测时间来自 `results/valid_prediction_time.csv`：
+
+| 模型 | 有效步数 | 物理时间 | Lyapunov time | 最终累计 State RMSE |
+|---|---:|---:|---:|---:|
+| Imperfect physics | 77 | 0.3850 | 0.3465 | 19.6795 |
+| Pure ML Residual MLP | 413 | 2.0652 | 1.8587 | 11.1571 |
+| Hybrid RF | 500 | 2.5003 | 2.2502 | 0.7774 |
+| Hybrid MLP | 500 | 2.5003 | 2.2502 | 0.0862 |
+
+在当前参数偏差 `rho=26` 的实验设置下，Hybrid correction 显著降低一步误差，并在 500 步 rollout 中保持更长有效预测时间。
 
 ## 如何运行
 
-建议在已安装依赖后，从项目根目录运行 notebook：
+安装依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
+运行 notebook：
 
 ```bash
 jupyter notebook lorenz_chaos_prediction.ipynb
 ```
 
-或使用 nbconvert 从头执行：
+或从头执行 notebook：
 
 ```bash
 jupyter nbconvert --to notebook --execute lorenz_chaos_prediction.ipynb --inplace
 ```
 
-## 图表说明
+从 CSV 重新生成报告表格核对片段：
 
-图表保存在 `figures/` 文件夹。
+```bash
+python scripts/generate_report_tables.py
+```
 
-原始图表包括：
+输出文件：
 
-- `lorenz_attractor.png`：Lorenz 三维吸引子图；
-- `lorenz_time_series.png`：状态变量时间序列图；
-- `correlation_heatmap.png`：相关性热力图；
-- `prediction_scatter_linear.png`：线性回归真实值 vs 预测值散点图；
-- `prediction_scatter_rf.png`：随机森林真实值 vs 预测值散点图；
-- `time_series_prediction.png`：测试集局部时间序列预测对比图；
-- `residuals.png`：随机森林残差图；
-- `model_metrics_comparison.png`：模型评价指标对比图；
-- `feature_importance.png`：随机森林特征重要性图。
+```text
+results/generated_report_tables.tex
+```
 
-增强图表包括：
+编译报告：
 
-- `horizon_vs_rmse.png`：prediction horizon 与 state RMSE 的关系；
-- `rollout_error.png`：recursive rollout 误差累积曲线；
-- `rollout_x_comparison.png`：rollout 中真实 `x(t)` 与预测 `x(t)` 对比；
-- `rollout_attractor.png`：真实轨迹与 rollout 预测轨迹三维对比；
-- `initial_condition_rmse.png`：不同初始条件下的泛化误差对比；
-- `model_enhancement_horizon_rmse.png`：Residual MLP、输出标准化和 ESN 在不同 horizon 下的对比；
-- `enhanced_rollout_error.png`：增强模型 recursive rollout 误差曲线；
-- `enhanced_rollout_x_comparison.png`：增强模型 rollout 中 `x(t)` 的真实值与预测值对比。
-- `sindy_coefficients.png`：SINDy 恢复的 Lorenz 方程系数热力图；
-- `sindy_rollout_x_comparison.png`：SINDy 恢复方程 rollout 中 `x(t)` 的真实值与预测值对比；
-- `hybrid_one_step_metrics.png`：imperfect physics、pure ML 与 hybrid correction 的一步预测误差对比；
-- `hybrid_rollout_error.png`：hybrid correction 在 recursive rollout 中的累计误差曲线；
-- `valid_prediction_time.png`：不同模型以 Lyapunov time 归一化的有效预测时间；
-- `long_term_distribution_comparison.png`：真实轨迹与 rollout 轨迹的长期分布对比。
-
-## 结果文件
-
-结果表格保存在 `results/` 文件夹。
-
-原始结果包括：
-
-- `lorenz_supervised_dataset.csv`
-- `missing_values.csv`
-- `descriptive_stats.csv`
-- `standardization_check.csv`
-- `model_metrics.csv`
-- `feature_importance.csv`
-- `summary.json`
-
-增强结果包括：
-
-- `horizon_results.csv`
-- `rollout_results.csv`
-- `initial_condition_generalization.csv`
-- `model_enhancement_results.csv`
-- `enhanced_rollout_results.csv`
-- `sindy_coefficients.csv`
-- `sindy_equation_error.csv`
-- `hybrid_metrics.csv`
-- `hybrid_rollout_results.csv`
-- `valid_prediction_time.csv`
-- `long_term_statistics.csv`
+```bash
+xelatex report.tex
+```
 
 ## 项目文件结构
 
@@ -333,50 +258,30 @@ lorenz-ml-project/
 ├── lorenz_chaos_prediction.ipynb
 ├── report.tex
 ├── report.pdf
+├── scripts/
+│   └── generate_report_tables.py
 ├── figures/
 │   ├── lorenz_attractor.png
-│   ├── lorenz_time_series.png
-│   ├── correlation_heatmap.png
-│   ├── prediction_scatter_linear.png
-│   ├── prediction_scatter_rf.png
-│   ├── time_series_prediction.png
-│   ├── residuals.png
-│   ├── model_metrics_comparison.png
-│   ├── feature_importance.png
 │   ├── horizon_vs_rmse.png
 │   ├── rollout_error.png
-│   ├── rollout_x_comparison.png
-│   ├── rollout_attractor.png
-│   ├── initial_condition_rmse.png
 │   ├── model_enhancement_horizon_rmse.png
-│   ├── enhanced_rollout_error.png
-│   ├── enhanced_rollout_x_comparison.png
-│   ├── sindy_coefficients.png
-│   ├── sindy_rollout_x_comparison.png
 │   ├── hybrid_one_step_metrics.png
 │   ├── hybrid_rollout_error.png
-│   ├── valid_prediction_time.png
-│   └── long_term_distribution_comparison.png
+│   └── valid_prediction_time.png
 └── results/
-    ├── lorenz_supervised_dataset.csv
-    ├── missing_values.csv
-    ├── descriptive_stats.csv
-    ├── standardization_check.csv
     ├── model_metrics.csv
-    ├── feature_importance.csv
-    ├── summary.json
     ├── horizon_results.csv
     ├── rollout_results.csv
-    ├── initial_condition_generalization.csv
     ├── model_enhancement_results.csv
-    ├── enhanced_rollout_results.csv
-    ├── sindy_coefficients.csv
-    ├── sindy_equation_error.csv
     ├── hybrid_metrics.csv
-    ├── hybrid_rollout_results.csv
     ├── valid_prediction_time.csv
-    └── long_term_statistics.csv
+    ├── summary.json
+    └── generated_report_tables.tex
 ```
+
+## 结论
+
+本项目把 Lorenz 混沌系统预测重构为一个清晰的 AI 导论 + AI for Science 小项目：先用 Linear Regression、Random Forest 和 MLP 做直接监督学习预测，分析普通黑箱模型在 horizon 和 rollout 上的预测边界；再用 Residual MLP 和 Hybrid correction 学习残差，突出机器学习修正不完美物理模型的科学建模价值。
 
 ## 小组信息
 
