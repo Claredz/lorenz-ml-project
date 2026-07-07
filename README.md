@@ -32,10 +32,13 @@ matlab -batch "run_all_matlab"
 
 该入口会生成或更新：
 
-- `results/*.csv`：Lorenz-63 与 Lorenz-96 基础结果；
-- `results/advanced/*.csv`：Lorenz-96 高级模型 rollout 与汇总结果；
+- `results/model_metrics.csv`、`results/rollout_results.csv`、`results/horizon_results.csv` 等：由 MATLAB 实际运行得到的 Lorenz-63 结果；
+- `results/matlab_lorenz96_residual_lstm_rollout.csv` 与 `results/matlab_lorenz96_residual_lstm_summary.csv`：由 MATLAB 实际训练得到的 Lorenz-96 残差 LSTM 基线结果；
+- `results/lorenz96_matlab_run_status.csv`：说明 Lorenz-96 各结果文件的来源；
 - `figures/*.png`：论文引用图像；
 - `results/generated_report_tables.tex`：由结果 CSV 生成的表格核对片段。
+
+说明：`results/lstm_phase*.csv` 与 `results/advanced/*.csv` 保留为原论文参考结果，用于保持论文结论和模型排序不变；它们不再被 MATLAB 脚本伪装为重新训练输出。
 
 如只想快速检查 MATLAB 路径和主要输出逻辑，可运行：
 
@@ -118,6 +121,9 @@ lorenz-ml-project/
     ├── lstm_phase3_w10_rollout.csv
     ├── lstm_phase3_w20_rollout.csv
     ├── lstm_phase3_w50_rollout.csv
+    ├── matlab_lorenz96_residual_lstm_rollout.csv
+    ├── matlab_lorenz96_residual_lstm_summary.csv
+    ├── lorenz96_matlab_run_status.csv
     └── advanced/
         ├── summary.csv
         ├── Baseline_LSTM_rollout.csv
@@ -143,17 +149,17 @@ lorenz-ml-project/
 
 | 模型 | RMSE | MAE | R² |
 |---|---:|---:|---:|
-| Linear Regression | 0.5457 | 0.4437 | 0.9952 |
-| Random Forest | 0.0805 | 0.0507 | 0.9999 |
-| MLP | 0.0757 | 0.0599 | 0.9999 |
+| Linear Regression | 0.5383 | 0.4481 | 0.9953 |
+| Random Forest | 0.0913 | 0.0640 | 0.9999 |
+| MLP | 0.0138 | 0.0108 | 1.0000 |
 
 500 步 recursive rollout 的最终累计 State RMSE：
 
 | 模型 | 最终累计 State RMSE |
 |---|---:|
-| Linear Regression | 20.2244 |
-| Random Forest | 14.5356 |
-| MLP | 19.8142 |
+| Linear Regression | 17.2665 |
+| Random Forest | 1.7883 |
+| MLP | 6.6833 |
 
 ### Lorenz-96：高级架构总体对比
 

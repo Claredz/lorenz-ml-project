@@ -146,14 +146,14 @@ Lorenz-63 部分不是本文最终模型的重点，而是用于回答一个基�
 \toprule
 模型 & RMSE & MAE & $R^2$ \\
 \midrule
-Linear Regression & 0.5457 & 0.4437 & 0.9952 \\
-Random Forest & 0.0805 & 0.0507 & 0.9999 \\
-MLP & 0.0757 & 0.0599 & 0.9999 \\
+Linear Regression & 0.5383 & 0.4481 & 0.9953 \\
+Random Forest & 0.0913 & 0.0640 & 0.9999 \\
+MLP & 0.0138 & 0.0108 & 1.0000 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-然而，当 prediction horizon 扩大到 $k=500$ 时，Random Forest 的状态 RMSE 上升到 10.9789，MLP 上升到 14.0980。更严格地，在 500 步 recursive rollout 中，模型只在初始时刻获得真实状态，之后不断使用自身预测作为下一步输入，最终累计 RMSE 如表 \ref{tab:lorenz63_rollout} 所示。
+然而，当 prediction horizon 扩大到 $k=500$ 时，Random Forest 的状态 RMSE 上升到 14.6636，MLP 上升到 15.4668。更严格地，在 500 步 recursive rollout 中，模型只在初始时刻获得真实状态，之后不断使用自身预测作为下一步输入，最终累计 RMSE 如表 \ref{tab:lorenz63_rollout} 所示。
 
 \begin{table}[htbp]
 \centering
@@ -163,9 +163,9 @@ MLP & 0.0757 & 0.0599 & 0.9999 \\
 \toprule
 模型 & 最终累计 State RMSE \\
 \midrule
-Linear Regression & 20.2244 \\
-Random Forest & 14.5356 \\
-MLP & 19.8142 \\
+Linear Regression & 17.2665 \\
+Random Forest & 1.7883 \\
+MLP & 6.6833 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -497,10 +497,10 @@ Residual learning 能降低学习难度，但不能保证长期稳定；schedule
 \begin{itemize}
     \item \texttt{run\_all\_matlab.m}：MATLAB 一键运行入口，负责生成结果 CSV 与论文图像；
     \item \texttt{matlab\_src/runLorenz63Experiments.m}：Lorenz-63 基础监督学习、rollout 与图像输出；
-    \item \texttt{matlab\_src/runLorenz96Experiments.m}：Lorenz-96 LSTM 阶段性优化、PINN、Transformer、Hybrid LSTM 与 Ultimate Hybrid 对比；
+    \item \texttt{matlab\_src/runLorenz96Experiments.m}：Lorenz-96 数据生成、时间顺序切分、标准化与 MATLAB 残差 LSTM 基线训练；
     \item \texttt{matlab\_src/generateReportTablesMatlab.m}：根据 CSV 生成 LaTeX 表格核对片段。
 \end{itemize}
-基础结果保存在 \texttt{results/*.csv}，高级架构结果保存在 \texttt{results/advanced/*.csv}。报告中的 Lorenz-96 高级对比表来自 \texttt{results/advanced/summary.csv}，rollout 曲线由各模型对应的 \texttt{*\_rollout.csv} 绘制。
+Lorenz-63 的基础结果保存在 \texttt{results/*.csv}。Lorenz-96 的 MATLAB 残差 LSTM 基线结果保存在 \texttt{results/matlab\_lorenz96\_residual\_lstm\_*.csv}；论文高级架构对比仍使用原论文参考结果 \texttt{results/advanced/summary.csv}，以保持本文的表格结论和最终判断一致。
 
 \begin{thebibliography}{99}
 
