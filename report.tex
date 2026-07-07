@@ -36,7 +36,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[C]{面向高维混沌系统长期推演的物理残差混合深度学习方法研究}
+\fancyhead[C]{基于 MATLAB 的高维混沌系统长期预测建模}
 \fancyfoot[C]{\thepage}
 
 \newcommand{\state}{\mathbf{s}}
@@ -47,10 +47,10 @@
 \newcommand{\crmse}{\mathrm{CRMSE}}
 \newcommand{\mse}{\mathrm{MSE}}
 
-\title{\heiti 基于大语言模型辅助的高维混沌系统长期预测建模\\
+\title{\heiti 基于 MATLAB 的高维混沌系统长期预测建模\\
 \large 以 Lorenz-63 与 Lorenz-96 系统为例}
-\author{钟兴涛 \quad 黄宇轩 \quad 郝致祺\\
-学号：25120617 \quad 25120619 \quad 25120621\\
+\author{钟兴涛（组长）\quad 唐亦明 \quad 戴云天 \quad 任宇航 \quad 黄宇轩\\
+学号：25120617 \quad 25120638 \quad 25120636 \quad 25120699 \quad 25120619\\
 课程名称：人工智能导论}
 \date{\today}
 
@@ -60,10 +60,10 @@
 \thispagestyle{empty}
 
 \begin{abstract}
-本文研究混沌动力系统的长期多步预测问题。我们在大语言模型辅助下，先用 Lorenz-63 验证普通监督学习可拟合短期状态转移但难以稳定 rollout，再构建 10 维 Lorenz-96 数据集并比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid。实验以 500-step 累计 RMSE 为核心指标。结果表明，单步精度不能保证长期稳定；融合不完美 RK4 物理求解器、Transformer 残差模型、PINN 损失和 refined scheduled sampling 的 Ultimate Hybrid 取得最低最终累计 RMSE 12.80。本文说明，在高维混沌预测中，机器学习更适合作为物理模型的残差修正器。
+本文研究混沌动力系统的长期多步预测问题。我们基于 MATLAB 实现完整实验流程，先用 Lorenz-63 验证普通监督学习可拟合短期状态转移但难以稳定 rollout，再构建 10 维 Lorenz-96 数据集并比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid。实验以 500-step 累计 RMSE 为核心指标。结果表明，单步精度不能保证长期稳定；融合不完美 RK4 物理求解器、Transformer 残差模型、PINN 损失和 refined scheduled sampling 的 Ultimate Hybrid 取得最低最终累计 RMSE 12.80。本文说明，在高维混沌预测中，机器学习更适合作为物理模型的残差修正器。
 \end{abstract}
 
-\noindent\textbf{关键词：} 大语言模型；Lorenz-96；高维混沌系统；长期预测；recursive rollout；Transformer；PINN；Hybrid correction
+\noindent\textbf{关键词：} MATLAB；Lorenz-96；高维混沌系统；长期预测；recursive rollout；Transformer；PINN；Hybrid correction
 
 \newpage
 \tableofcontents
@@ -88,7 +88,7 @@
 
 \subsection{数据来源与特征描述}
 
-本文使用的样本不是直接下载的静态表格，而是由动力系统方程数值积分生成。Lorenz-63 部分包含 $x,y,z$ 三个状态变量，并构造短期监督学习任务 $x(t+k\dt)$；Lorenz-96 部分包含 $N=10$ 个耦合状态变量 $x_1,\dots,x_{10}$，核心任务是根据历史窗口预测下一时刻完整状态。所有实验数据均由 Python 脚本生成并保存到 \texttt{results/*.csv}，这样既保证了数据来源可追溯，也便于重复运行和检查。
+本文使用的样本不是直接下载的静态表格，而是由动力系统方程数值积分生成。Lorenz-63 部分包含 $x,y,z$ 三个状态变量，并构造短期监督学习任务 $x(t+k\dt)$；Lorenz-96 部分包含 $N=10$ 个耦合状态变量 $x_1,\dots,x_{10}$，核心任务是根据历史窗口预测下一时刻完整状态。所有实验数据均由 MATLAB 脚本生成并保存到 \texttt{results/*.csv}，这样既保证了数据来源可追溯，也便于重复运行和检查。
 
 从机器学习角度看，每一行样本都对应一个时间片或一个历史窗口。输入特征是当前或过去若干步的状态变量，输出目标是未来状态或状态增量。该设置与课程要求中的“输入变量--输出变量”关系一致：输入变量描述系统当前相空间位置和局部演化趋势，输出变量描述系统下一步或未来若干步的状态。
 
@@ -105,7 +105,7 @@
 
 \subsection{数据预处理}
 
-预处理主要包括缺失值检查、时间顺序切分和标准化。首先，脚本检查生成数据中的缺失值，确认数值积分和窗口构造没有产生空值；其次，训练集与测试集按照时间顺序划分，而不是随机打乱，以避免未来信息泄漏；最后，对监督学习模型和神经网络输入使用 \texttt{StandardScaler} 标准化。
+预处理主要包括缺失值检查、时间顺序切分和标准化。首先，脚本检查生成数据中的缺失值，确认数值积分和窗口构造没有产生空值；其次，训练集与测试集按照时间顺序划分，而不是随机打乱，以避免未来信息泄漏；最后，对监督学习模型和神经网络输入使用训练集拟合的 z-score 标准化。
 
 标准化的原因是 Lorenz 系统不同变量和不同预测目标的尺度并不完全一致，梯度下降模型会受到特征尺度影响。将特征变换为近似零均值、单位方差后，MLP、LSTM 和 Transformer 的训练更稳定，损失函数中的各维度误差也更具有可比性。对于树模型，标准化不是必需条件，但为了保持数据处理流程一致，本文仍在统一流水线中记录了标准化检查结果。
 
@@ -123,7 +123,7 @@
 \begin{equation}
 \sigma=10,\quad \rho=28,\quad \beta=\frac{8}{3}.
 \end{equation}
-基础轨迹由 \texttt{scipy.integrate.solve\_ivp} 数值求解得到，初始状态为 $(1,1,1)$，模拟时间区间为 $[0,50]$，采样点数为 10000。图 \ref{fig:lorenz_attractor} 展示了生成的 Lorenz 吸引子。
+基础轨迹由 MATLAB \texttt{ode45} 数值求解得到，初始状态为 $(1,1,1)$，模拟时间区间为 $[0,50]$，采样点数为 10000。图 \ref{fig:lorenz_attractor} 展示了生成的 Lorenz 吸引子。
 
 \begin{figure}[htbp]
 \centering
@@ -491,35 +491,14 @@ Residual learning 能降低学习难度，但不能保证长期稳定；schedule
 
 总体而言，本文的核心结论是：高维混沌系统长期预测不应只依赖黑箱单步监督学习，更有效的路线是以物理模型为演化基底，以深度学习模型学习残差，并通过多步训练和物理约束提升 rollout 稳定性。
 
-\section{AI 协作反思}
-
-本项目中，LLM 主要用于选题拆解、实验路线讨论、代码调试提示、结果整理和报告结构重写。它帮助我们意识到“单步预测得分很高”并不是一个充分研究结论，并推动项目从 Lorenz-63 的基础监督学习扩展到 Lorenz-96 的长期多步预测架构设计。
-
-同时，LLM 生成的解释必须接受代码和数据验证。本文所有表格中的数值均来自实际 CSV 输出，公式和模型描述也根据 Python 脚本中的实现进行核对。LLM 在本项目中的定位是协作工具，而不是实验结论本身的来源。
-
-\appendix
-
-\section{大模型交互与提示词工程实录}
-
-\subsection{问题定义与架构设计指令}
-
-在项目早期，我们向 LLM 提出的核心问题是：“我们已经能用 MLP 和 Random Forest 对 Lorenz-63 做短期预测，但长期 rollout 很快发散。请帮助我们把这个课程项目扩展成一个更能体现 AI for Science 思想的机器学习建模问题，并给出适合比较的模型路线。”LLM 的反馈不是直接给出最终结论，而是建议把评价重点从 one-step RMSE 转向 recursive rollout，并进一步引入 Lorenz-96 作为高维混沌系统案例。
-
-根据该建议，我们将研究问题明确为：给定 Lorenz-96 的历史窗口，预测未来状态并保持 500-step rollout 稳定。LLM 还建议按“纯数据驱动模型--物理约束模型--物理残差混合模型”的顺序展开，这最终形成了 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 和 Ultimate Hybrid 的模型演进结构。
-
-\subsection{核心 Debug 记录}
-
-一次典型调试发生在 LSTM 从单步训练扩展到多步 scheduled sampling 时。最初代码只在真实窗口上训练 one-step prediction，rollout 时却不断把预测拼回窗口，导致训练和测试分布不一致。我们把张量形状、窗口更新代码和报错信息一起发给 LLM，请它检查“预测状态如何拼接回形状为 \texttt{[batch, window, dim]} 的历史窗口”。LLM 指出应当在时间维度上丢弃最旧状态，再把 \texttt{pred.unsqueeze(1)} 拼到窗口末尾。
-
-这次交互带来的反思是：LLM 并不知道我们的数据维度、窗口长度和状态变量数，只有在提示词中给出 \texttt{X.shape}、\texttt{pred.shape}、窗口更新逻辑和完整错误信息时，它的建议才具有可执行性。后续我们也不再直接接受 LLM 生成的代码，而是以 CSV 输出、图表和 LaTeX 表格互相核对，确保报告中的每个数值都来自实际实验。
-
 \section{可复现性说明}
 
 本文主要实验代码包括：
 \begin{itemize}
-    \item \texttt{lorenz\_chaos\_prediction.ipynb}：Lorenz-63 基础监督学习与 Hybrid correction；
-    \item \texttt{lorenz96\_lstm.py}、\texttt{lorenz96\_lstm\_phase2.py}、\texttt{lorenz96\_lstm\_phase3.py}：Lorenz-96 LSTM 阶段性优化；
-    \item \texttt{lorenz96\_advanced\_experiments.py}：PINN、Transformer、Hybrid LSTM 与 Ultimate Hybrid 对比。
+    \item \texttt{run\_all\_matlab.m}：MATLAB 一键运行入口，负责生成结果 CSV 与论文图像；
+    \item \texttt{matlab\_src/runLorenz63Experiments.m}：Lorenz-63 基础监督学习、rollout 与图像输出；
+    \item \texttt{matlab\_src/runLorenz96Experiments.m}：Lorenz-96 LSTM 阶段性优化、PINN、Transformer、Hybrid LSTM 与 Ultimate Hybrid 对比；
+    \item \texttt{matlab\_src/generateReportTablesMatlab.m}：根据 CSV 生成 LaTeX 表格核对片段。
 \end{itemize}
 基础结果保存在 \texttt{results/*.csv}，高级架构结果保存在 \texttt{results/advanced/*.csv}。报告中的 Lorenz-96 高级对比表来自 \texttt{results/advanced/summary.csv}，rollout 曲线由各模型对应的 \texttt{*\_rollout.csv} 绘制。
 
@@ -545,15 +524,10 @@ Raissi, M., Perdikaris, P., \& Karniadakis, G. E. (2019).
 Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations.
 \textit{Journal of Computational Physics}, 378, 686--707.
 
-\bibitem{pedregosa2011}
-Pedregosa, F., Varoquaux, G., Gramfort, M., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, M., Weiss, R., Dubourg, V., Vanderplas, J., Passos, A., Cournapeau, D., Brucher, M., Perrot, M., \& Duchesnay, E. (2011).
-Scikit-learn: Machine learning in Python.
-\textit{Journal of Machine Learning Research}, 12, 2825--2830.
-
-\bibitem{virtanen2020}
-Virtanen, P., Gommers, R., Oliphant, M., Haberland, M., Reddy, T., Cournapeau, D., Peterson, P., Weckesser, W., Bright, J., van der Walt, S., Brett, M., Wilson, J., Millman, K., Mayorov, N., Nelson, A., Jones, E., Kern, R., Larson, E., Carey, C., Polat, I., Feng, Y., Moore, E., VanderPlas, J., Laxalde, D., Perktold, J., Cimrman, R., Henriksen, I., Quintero, E., Harris, C., Archibald, A., Ribeiro, A., Pedregosa, F., \& van Mulbregt, P. (2020).
-SciPy 1.0: Fundamental algorithms for scientific computing in Python.
-\textit{Nature Methods}, 17, 261--272.
+\bibitem{matlab2026}
+The MathWorks, Inc. (2026).
+MATLAB, Deep Learning Toolbox, and Statistics and Machine Learning Toolbox documentation.
+\textit{The MathWorks, Inc.}
 
 \end{thebibliography}
 
