@@ -59,6 +59,7 @@ cfg.gradientThreshold = 1.0;
 cfg.pinnLambda = 0.1;
 cfg.rolloutSteps = 500;
 cfg.maxTrainSamples = 2200;
+cfg.baselineMaxTrainSamples = 60;
 cfg.maxScheduledBaseSamples = 900;
 if mode == "smoke"
     cfg.tEnd = 30;
@@ -66,6 +67,7 @@ if mode == "smoke"
     cfg.epochs = 2;
     cfg.rolloutSteps = 100;
     cfg.maxTrainSamples = 350;
+    cfg.baselineMaxTrainSamples = 30;
     cfg.maxScheduledBaseSamples = 160;
 end
 end
@@ -139,10 +141,14 @@ end
 
 function model = trainSequenceModel(ctx, windowSize, arch, targetKind, useHybrid, usePinn, useScheduled, scheduleKind)
 cfg = ctx.cfg;
+trainCtx = ctx;
+if arch == "baselineLstm"
+    trainCtx.cfg.maxTrainSamples = cfg.baselineMaxTrainSamples;
+end
 if useScheduled
-    [XTrain, YTrain] = makeScheduledDataset(ctx, windowSize, targetKind, useHybrid, usePinn, scheduleKind);
+    [XTrain, YTrain] = makeScheduledDataset(trainCtx, windowSize, targetKind, useHybrid, usePinn, scheduleKind);
 else
-    [XTrain, YTrain] = makeOneStepDataset(ctx, windowSize, targetKind, useHybrid, usePinn);
+    [XTrain, YTrain] = makeOneStepDataset(trainCtx, windowSize, targetKind, useHybrid, usePinn);
 end
 layers = buildLayers(cfg.N, cfg.hiddenDim, arch);
 options = trainingOptions('adam', ...

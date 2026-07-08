@@ -163,12 +163,12 @@ lorenz-ml-project/
 
 | 模型架构 | 500-step 最终累计 RMSE |
 |---|---:|
-| Baseline LSTM | 12.56 |
-| PINN LSTM | 30.63 |
-| Refined SS LSTM | 18.06 |
-| Transformer | 15.08 |
-| Hybrid LSTM | 15.39 |
-| **Ultimate Hybrid** | **12.34** |
+| Baseline LSTM | 11.80 |
+| PINN LSTM | 30.94 |
+| Refined SS LSTM | 15.94 |
+| Transformer | 13.49 |
+| Hybrid LSTM | 15.19 |
+| **Ultimate Hybrid** | **11.66** |
 
 Ultimate Hybrid 在所有高级架构中取得最低最终累计 RMSE，说明物理基底、残差学习、Transformer 序列建模、PINN 约束和 refined scheduled sampling 的组合能更好地抑制长期 rollout 发散。
 
