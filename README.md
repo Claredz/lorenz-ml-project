@@ -33,12 +33,11 @@ matlab -batch "run_all_matlab"
 该入口会生成或更新：
 
 - `results/model_metrics.csv`、`results/rollout_results.csv`、`results/horizon_results.csv` 等：由 MATLAB 实际运行得到的 Lorenz-63 结果；
-- `results/matlab_lorenz96_residual_lstm_rollout.csv` 与 `results/matlab_lorenz96_residual_lstm_summary.csv`：由 MATLAB 实际训练得到的 Lorenz-96 残差 LSTM 基线结果；
-- `results/lorenz96_matlab_run_status.csv`：说明 Lorenz-96 各结果文件的来源；
+- `results/lstm_phase_summary.csv`、`results/lstm_phase*.csv`：由 MATLAB 实际训练得到的 Lorenz-96 阶段模型结果；
+- `results/advanced/summary.csv` 与 `results/advanced/*_rollout.csv`：由 MATLAB 实际训练得到的 Lorenz-96 高级模型结果；
+- `results/lorenz96_matlab_run_status.csv`：说明 Lorenz-96 结果由 MATLAB 训练生成；
 - `figures/*.png`：论文引用图像；
 - `results/generated_report_tables.tex`：由结果 CSV 生成的表格核对片段。
-
-说明：`results/lstm_phase*.csv` 与 `results/advanced/*.csv` 保留为原论文参考结果，用于保持论文结论和模型排序不变；它们不再被 MATLAB 脚本伪装为重新训练输出。
 
 如只想快速检查 MATLAB 路径和主要输出逻辑，可运行：
 
@@ -121,8 +120,7 @@ lorenz-ml-project/
     ├── lstm_phase3_w10_rollout.csv
     ├── lstm_phase3_w20_rollout.csv
     ├── lstm_phase3_w50_rollout.csv
-    ├── matlab_lorenz96_residual_lstm_rollout.csv
-    ├── matlab_lorenz96_residual_lstm_summary.csv
+    ├── lstm_phase_summary.csv
     ├── lorenz96_matlab_run_status.csv
     └── advanced/
         ├── summary.csv
@@ -165,12 +163,12 @@ lorenz-ml-project/
 
 | 模型架构 | 500-step 最终累计 RMSE |
 |---|---:|
-| Baseline LSTM | 148.79 |
-| PINN LSTM | 20.18 |
-| Refined SS LSTM | 16.79 |
-| Transformer | 16.34 |
-| Hybrid LSTM | 15.84 |
-| **Ultimate Hybrid** | **12.80** |
+| Baseline LSTM | 12.56 |
+| PINN LSTM | 30.63 |
+| Refined SS LSTM | 18.06 |
+| Transformer | 15.08 |
+| Hybrid LSTM | 15.39 |
+| **Ultimate Hybrid** | **12.34** |
 
 Ultimate Hybrid 在所有高级架构中取得最低最终累计 RMSE，说明物理基底、残差学习、Transformer 序列建模、PINN 约束和 refined scheduled sampling 的组合能更好地抑制长期 rollout 发散。
 
