@@ -60,7 +60,7 @@
 \thispagestyle{empty}
 
 \begin{abstract}
-本文研究混沌动力系统的长期多步预测问题。我们基于 MATLAB 实现完整实验流程，先用 Lorenz-63 验证普通监督学习可拟合短期状态转移但难以稳定 rollout，再构建 10 维 Lorenz-96 数据集并比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid。实验以 500-step 累计 RMSE 为核心指标。结果表明，单步精度不能保证长期稳定；融合不完美 RK4 物理求解器、Transformer 残差模型、PINN 损失和 refined scheduled sampling 的 Ultimate Hybrid 取得最低最终累计 RMSE 12.80。本文说明，在高维混沌预测中，机器学习更适合作为物理模型的残差修正器。
+本文研究混沌动力系统的长期多步预测问题。我们基于 MATLAB 实现完整实验流程，先用 Lorenz-63 验证普通监督学习可拟合短期状态转移但难以稳定 rollout，再构建 10 维 Lorenz-96 数据集并比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid。实验以 500-step 累计 RMSE 为核心指标。结果表明，单步精度不能保证长期稳定；融合不完美 RK4 物理求解器、Transformer 残差模型、PINN 损失和 refined scheduled sampling 的 Ultimate Hybrid 取得最低最终累计 RMSE 14.42。本文说明，在高维混沌预测中，机器学习更适合作为物理模型的残差修正器。
 \end{abstract}
 
 \noindent\textbf{关键词：} MATLAB；Lorenz-96；高维混沌系统；长期预测；recursive rollout；Transformer；PINN；Hybrid correction
@@ -136,7 +136,7 @@ Lorenz-63 部分不是本文最终模型的重点，而是用于回答一个基�
 
 \subsection{短期预测与 rollout 发散}
 
-表 \ref{tab:lorenz63_short} 给出课程原始短期任务 $x(t+10\dt)$ 的测试集结果。Random Forest 和 MLP 明显优于 Linear Regression，说明短期局部非线性映射可以由监督学习模型拟合。
+表 \ref{tab:lorenz63_short} 给出短期任务 $x(t+10\dt)$ 的测试集结果。Random Forest 和 MLP 明显优于 Linear Regression，说明短期局部非线性映射可以由监督学习模型拟合。
 
 \begin{table}[htbp]
 \centering
@@ -356,7 +356,7 @@ g_{\theta}^{\mathrm{Transformer}}(\xvec_{t-w+1},\dots,\xvec_t).
 
 \subsection{阶段性 LSTM 优化结果}
 
-表 \ref{tab:lstm_phase} 总结了 Lorenz-96 LSTM 优化过程中的代表性结果。Baseline LSTM 在 one-step 指标上可以达到较高精度，但 500 步 rollout 仍会积累明显误差。Residual learning、LayerNorm 和梯度裁剪降低了 one-step RMSE；scheduled sampling 进一步降低了 one-step RMSE，并在本次 MATLAB 训练中略微改善 500 步 rollout，但这种改善幅度小于单步指标变化。这说明混沌系统中多步训练策略需要结合长期累计误差单独评价。
+表 \ref{tab:lstm_phase} 总结了 Lorenz-96 LSTM 优化过程中的代表性结果。Baseline LSTM 在 one-step 指标上可以达到较高精度，但 500 步 rollout 仍会积累明显误差。Residual learning、LayerNorm 和梯度裁剪降低了 one-step RMSE；scheduled sampling 进一步降低了 one-step RMSE，并显著缓解 Phase 1 的递归发散，但其 500 步误差仍高于绝对状态基线。这说明混沌系统中多步训练策略需要结合长期累计误差单独评价。
 
 \begin{table}[htbp]
 \centering
@@ -367,9 +367,9 @@ g_{\theta}^{\mathrm{Transformer}}(\xvec_{t-w+1},\dots,\xvec_t).
 \toprule
 模型阶段 & One-step RMSE & One-step $R^2$ & 500-step 最终累计 RMSE \\
 \midrule
-Baseline LSTM（绝对状态预测） & 0.7208 & 0.4756 & 13.1409 \\
-Phase 1：残差预测 + LayerNorm + 裁剪 & 0.0511 & 0.9974 & 20.8160 \\
-Phase 2：多步损失 + Scheduled Sampling & 0.0428 & 0.9982 & 19.6285 \\
+Baseline LSTM（绝对状态预测） & 0.0405 & 0.9983 & 16.4812 \\
+Phase 1：残差预测 + LayerNorm + 裁剪 & 0.0260 & 0.9993 & 1618.0228 \\
+Phase 2：多步损失 + Scheduled Sampling & 0.0192 & 0.9996 & 179.5661 \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -388,9 +388,9 @@ Phase 2：多步损失 + Scheduled Sampling & 0.0428 & 0.9982 & 19.6285 \\
 \toprule
 窗口长度 $w$ & 500-step 最终累计 RMSE \\
 \midrule
-10 & 17.4522 \\
-20 & 22.0130 \\
-50 & 26.3713 \\
+10 & 1285.8902 \\
+20 & 909.5297 \\
+50 & 1373.0345 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -402,11 +402,11 @@ Phase 2：多步损失 + Scheduled Sampling & 0.0428 & 0.9982 & 19.6285 \\
 \label{fig:window_ablation}
 \end{figure}
 
-从结果看，$w=50$ 的最终累计 RMSE 达到 26.3713，高于 $w=10$ 与 $w=20$。本文最终高级架构采用 $w=20$，是对历史信息量、训练成本和模型稳定性的折中。
+从结果看，$w=20$ 在本次窗口消融中取得最低最终累计 RMSE，而 $w=10$ 和 $w=50$ 都出现更明显的递归误差累积。本文最终高级架构采用 $w=20$，是对历史信息量、训练成本和模型稳定性的折中。
 
 \subsection{高级架构总体对比}
 
-表 \ref{tab:advanced_results} 给出高级模型在 Lorenz-96 500-step rollout 中的最终累计 RMSE。不同模块的收益并非简单单调，但 Transformer 和 Hybrid 方向整体优于单独的 PINN LSTM；Ultimate Hybrid 最终达到 11.66，是所有比较模型中最优的。
+表 \ref{tab:advanced_results} 给出高级模型在 Lorenz-96 500-step rollout 中的最终累计 RMSE。不同模块的收益并非简单单调，单独加入 PINN 或不完美物理残差并不必然带来长期稳定性提升；Ultimate Hybrid 最终达到 14.42，是所有比较模型中最优的。
 
 \begin{table}[htbp]
 \centering
@@ -416,12 +416,12 @@ Phase 2：多步损失 + Scheduled Sampling & 0.0428 & 0.9982 & 19.6285 \\
 \toprule
 模型架构 & 最终累计 State RMSE \\
 \midrule
-Baseline LSTM & 11.80 \\
-PINN LSTM & 30.94 \\
-Refined SS LSTM & 15.94 \\
-Transformer & 13.49 \\
-Hybrid LSTM & 15.19 \\
-\textbf{Ultimate Hybrid} & \textbf{11.66} \\
+Baseline LSTM & 15.26 \\
+PINN LSTM & 477.29 \\
+Refined SS LSTM & 15.16 \\
+Transformer & 23.25 \\
+Hybrid LSTM & 78.42 \\
+\textbf{Ultimate Hybrid} & \textbf{14.42} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -452,9 +452,9 @@ Hybrid LSTM & 15.19 \\
 
 首先，PINN LSTM 单独加入物理损失后并未自动取得最优长期 rollout，说明物理约束的收益依赖于权重、坐标尺度和训练方式，不能只看 one-step 物理一致性。
 
-其次，Transformer 的结果优于 Refined SS LSTM，说明 self-attention 对历史窗口内部关系的建模能力有助于捕捉高维相空间的短期演化趋势。它不依赖单个递归隐藏状态压缩全部历史信息，因此在窗口特征提取上更灵活。
+其次，Refined SS LSTM 略优于 Baseline LSTM，说明在严格递归输入条件下，多步训练可以减小训练和 rollout 之间的分布偏移。单独 Transformer 的结果没有超过 LSTM 基线，说明更强的序列表达能力仍需要与合适的物理基础预测和训练目标配合。
 
-第三，Hybrid LSTM 与 Transformer 的误差接近，说明不完美物理求解器即使存在参数偏差，仍能提供有价值的动力学基底。神经网络只学习残差，比完全从数据中学习整个状态转移更符合物理残差修正思路。
+第三，Hybrid LSTM 的误差高于 Baseline LSTM，说明不完美物理求解器虽然能提供动力学基底，但残差网络若不能稳定修正参数偏差，递归 rollout 仍可能被误差放大。物理基础预测需要与更合适的序列模型、物理损失和多步训练共同使用。
 
 最后，Ultimate Hybrid 将上述优势叠加：物理求解器提供基础演化，Transformer 提供残差表达能力，PINN 限制非物理更新，scheduled sampling 使训练过程更接近 rollout。它不是单一技巧的改进，而是针对长期混沌推演问题的组合式架构设计。
 
@@ -473,7 +473,7 @@ Hybrid LSTM & 15.19 \\
 
 \subsection{物理模型与深度模型的分工}
 
-Ultimate Hybrid 的设计体现了 AI for Science 中一种重要思想：机器学习不必替代物理模型，而应与物理模型分工协作。对 Lorenz-96 而言，不完美 RK4 求解器已经包含主要动力学结构，Transformer 只需学习参数偏差和模型误差导致的残差。这样的任务分解比直接学习完整状态转移更稳定，也更符合科学建模中“已有近似方程，需要数据修正”的实际场景。
+Ultimate Hybrid 的设计体现了科学计算中的一种重要思想：机器学习不必替代物理模型，而应与物理模型分工协作。对 Lorenz-96 而言，不完美 RK4 求解器已经包含主要动力学结构，Transformer 只需学习参数偏差和模型误差导致的残差。这样的任务分解比直接学习完整状态转移更稳定，也更符合科学建模中“已有近似方程，需要数据修正”的实际场景。
 
 \subsection{不同模块的局限}
 
@@ -487,7 +487,7 @@ Residual learning 能降低学习难度，但不能保证长期稳定；schedule
 
 本文从 Lorenz-63 的基础监督学习实验出发，说明短期局部状态转移可以被机器学习拟合，但长期 recursive rollout 会受到混沌误差放大的限制。随后，本文将重点转向 Lorenz-96 (10D) 高维混沌系统，围绕 500-step rollout 稳定性设计并比较多种深度学习架构。
 
-实验表明，单步预测精度不能代表长期预测能力。Residual LSTM、PINN、Transformer、Hybrid physics 和 scheduled sampling 分别从学习目标、物理一致性、序列建模、动力学基底和训练分布偏移等角度影响长期推演，其中单独模块并不总是单调改善 rollout。最终的 Ultimate Hybrid 将不完美物理求解器、Transformer 残差建模、PINN 损失与 refined scheduled sampling 融合，在 Lorenz-96 500 步 rollout 中取得最低最终累计 RMSE 11.66。
+实验表明，单步预测精度不能代表长期预测能力。Residual LSTM、PINN、Transformer、Hybrid physics 和 scheduled sampling 分别从学习目标、物理一致性、序列建模、动力学基底和训练分布偏移等角度影响长期推演，其中单独模块并不总是单调改善 rollout。最终的 Ultimate Hybrid 将不完美物理求解器、Transformer 残差建模、PINN 损失与 refined scheduled sampling 融合，在 Lorenz-96 500 步 rollout 中取得最低最终累计 RMSE 14.42。
 
 总体而言，本文的核心结论是：高维混沌系统长期预测不应只依赖黑箱单步监督学习，更有效的路线是以物理模型为演化基底，以深度学习模型学习残差，并通过多步训练和物理约束提升 rollout 稳定性。
 
@@ -497,10 +497,12 @@ Residual learning 能降低学习难度，但不能保证长期稳定；schedule
 \begin{itemize}
     \item \texttt{run\_all\_matlab.m}：MATLAB 一键运行入口，负责生成结果 CSV 与论文图像；
     \item \texttt{matlab\_src/runLorenz63Experiments.m}：Lorenz-63 基础监督学习、rollout 与图像输出；
-    \item \texttt{matlab\_src/runLorenz96Experiments.m}：Lorenz-96 数据生成、时间顺序切分、标准化与 MATLAB 残差 LSTM 基线训练；
-    \item \texttt{matlab\_src/generateReportTablesMatlab.m}：根据 CSV 生成 LaTeX 表格核对片段。
+    \item \texttt{matlab\_src/runLorenz96Experiments.m}：Lorenz-96 数据生成、时间顺序切分、标准化、模型训练与 500 步 rollout；
+    \item \texttt{matlab\_src/generateReportTablesMatlab.m}：根据 CSV 生成 LaTeX 表格核对片段；
+    \item \texttt{matlab\_src/buildFinalPdf.m}：编译正文、生成课程封面并合并最终 PDF；
+    \item \texttt{matlab\_src/utils/*.m}：动力系统右端项、RK4、标准化、累计 RMSE 与目录工具函数。
 \end{itemize}
-Lorenz-63 的基础结果保存在 \texttt{results/*.csv}。Lorenz-96 阶段模型结果保存在 \texttt{results/lstm\_phase*.csv} 与 \texttt{results/lstm\_phase\_summary.csv}；高级架构结果保存在 \texttt{results/advanced/*.csv}，均由 MATLAB 训练和 500 步 recursive rollout 生成。
+Lorenz-63 的基础结果保存在 \texttt{results/*.csv}。Lorenz-96 阶段模型结果保存在 \texttt{results/lstm\_phase*.csv} 与 \texttt{results/lstm\_phase\_summary.csv}；高级架构结果保存在 \texttt{results/advanced/*.csv}，均由 MATLAB 训练和 500 步 recursive rollout 生成。本文所有表格与图像均由 MATLAB 脚本生成。
 
 \begin{thebibliography}{99}
 

@@ -1,86 +1,50 @@
 # 基于 MATLAB 的高维混沌系统长期预测建模
 
-- **副标题：** 以 Lorenz-63 与 Lorenz-96 系统为例
 - **课程名称：** 人工智能导论
 - **组长：** 钟兴涛（25120617）
 - **组员：** 唐亦明（25120638）、戴云天（25120636）、任宇航（25120699）、黄宇轩（25120619）
 
 ## 项目简介
 
-本项目是原 Lorenz 混沌系统预测课程论文的 MATLAB 实现版。研究主线、实验结论、模型排序和最终判断保持不变；本分支的核心变化是将主要实验入口迁移为 MATLAB / Deep Learning Toolbox / Statistics and Machine Learning Toolbox。
+本项目基于 MATLAB 完成 Lorenz 混沌系统长期预测实验。实验先使用 Lorenz-63 系统验证短期监督学习和递归推演之间的差异，再扩展到 10 维 Lorenz-96 系统，比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid 在 500-step recursive rollout 中的稳定性。
 
-项目先用 Lorenz-63 系统说明普通监督学习模型可以拟合短期局部状态转移，但在 recursive rollout 中会因为误差累积而逐渐偏离真实轨迹；随后将重点扩展到 10 维 Lorenz-96 系统，比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid 在 500-step rollout 中的长期稳定性。
-
-核心结论是：**one-step prediction 精度不能代表长期预测能力**。在高维混沌系统中，更有效的路线不是只依赖黑箱神经网络，而是以物理模型作为演化基底，让深度学习模型学习残差，并结合物理约束和多步训练提升 rollout 稳定性。
+核心结论是：one-step prediction 精度不能直接代表长期预测能力。在高维混沌系统中，将物理演化模型作为基础预测，再让神经网络学习残差，并结合物理约束和多步训练，可以提升长期 rollout 稳定性。
 
 ## MATLAB 运行环境
-
-建议环境：
 
 - MATLAB R2026a 或兼容版本；
 - Deep Learning Toolbox；
 - Statistics and Machine Learning Toolbox；
-- 支持中文的 XeLaTeX 环境（用于编译论文）。
+- 支持中文的 XeLaTeX 环境。
 
-## 如何运行 MATLAB 实验
+## 一键运行
 
-在仓库根目录运行：
+在仓库根目录运行完整实验：
 
 ```bash
 matlab -batch "run_all_matlab"
 ```
 
-该入口会生成或更新：
-
-- `results/model_metrics.csv`、`results/rollout_results.csv`、`results/horizon_results.csv` 等：由 MATLAB 实际运行得到的 Lorenz-63 结果；
-- `results/lstm_phase_summary.csv`、`results/lstm_phase*.csv`：由 MATLAB 实际训练得到的 Lorenz-96 阶段模型结果；
-- `results/advanced/summary.csv` 与 `results/advanced/*_rollout.csv`：由 MATLAB 实际训练得到的 Lorenz-96 高级模型结果；
-- `results/lorenz96_matlab_run_status.csv`：说明 Lorenz-96 结果由 MATLAB 训练生成；
-- `figures/*.png`：论文引用图像；
-- `results/generated_report_tables.tex`：由结果 CSV 生成的表格核对片段。
-
-如只想快速检查 MATLAB 路径和主要输出逻辑，可运行：
+快速检查主要代码路径：
 
 ```bash
 matlab -batch "run_all_matlab('smoke')"
 ```
 
-## 如何生成论文 PDF
+生成带课程封面的最终论文：
 
-正文仍以 LaTeX 源文件 `report.tex` 为母版。推荐流程：
-
-1. 运行 MATLAB 实验：
-
-   ```bash
-   matlab -batch "run_all_matlab"
-   ```
-
-2. 编译正文 PDF：
-
-   ```bash
-   xelatex report.tex
-   xelatex report.tex
-   ```
-
-3. 生成并合并课程封面与正文：
-
-   ```bash
-   matlab -batch "build_final_pdf"
-   ```
-
-最终完整论文 PDF 路径：
-
-```text
-report.pdf
+```bash
+matlab -batch "build_final_pdf"
 ```
 
-正文 LaTeX 源文件保留为：
+## 输出目录
 
-```text
-report.tex
-```
+- `results/*.csv`：Lorenz-63 指标、rollout、horizon 与 hybrid 结果；
+- `results/advanced/*.csv`：Lorenz-96 高级模型汇总与各模型 rollout 结果；
+- `figures/*.png`：论文图像；
+- `report.pdf`：最终论文 PDF。
 
-## 项目文件结构
+## 文件结构
 
 ```text
 lorenz-ml-project/
@@ -94,6 +58,8 @@ lorenz-ml-project/
 │   ├── runLorenz96Experiments.m
 │   ├── generateReportTablesMatlab.m
 │   ├── buildFinalPdf.m
+│   ├── tests/
+│   │   └── verifyFinalSubmission.m
 │   └── utils/
 │       ├── cumulativeRmse.m
 │       ├── ensureFolder.m
@@ -114,14 +80,13 @@ lorenz-ml-project/
     ├── horizon_results.csv
     ├── hybrid_metrics.csv
     ├── valid_prediction_time.csv
+    ├── lstm_phase_summary.csv
     ├── lstm_phase1_rollout.csv
     ├── lstm_phase2_rollout.csv
     ├── lstm_phase3_summary.csv
     ├── lstm_phase3_w10_rollout.csv
     ├── lstm_phase3_w20_rollout.csv
     ├── lstm_phase3_w50_rollout.csv
-    ├── lstm_phase_summary.csv
-    ├── lorenz96_matlab_run_status.csv
     └── advanced/
         ├── summary.csv
         ├── Baseline_LSTM_rollout.csv
@@ -132,18 +97,9 @@ lorenz-ml-project/
         └── Ultimate_Hybrid_rollout.csv
 ```
 
-## 研究主线
+## 主要结论
 
-1. 使用 Lorenz-63 验证“短期可学、长期受限”的基础现象；
-2. 构造 Lorenz-96 (10D) 高维混沌系统数据集；
-3. 使用历史窗口预测下一时刻状态，并以 500-step 累计 RMSE 评价长期 rollout；
-4. 从 Baseline LSTM 逐步加入残差预测、LayerNorm、gradient clipping 和 scheduled sampling；
-5. 比较 PINN 物理约束、Transformer 序列建模、Hybrid physics 残差修正等高级架构；
-6. 提出 Ultimate Hybrid：不完美 RK4 物理求解器 + Transformer 残差 + PINN 损失 + refined scheduled sampling。
-
-## 主要结果
-
-### Lorenz-63：短期可学但 rollout 发散
+### Lorenz-63：短期可学但 rollout 会累积误差
 
 | 模型 | RMSE | MAE | R² |
 |---|---:|---:|---:|
@@ -163,19 +119,11 @@ lorenz-ml-project/
 
 | 模型架构 | 500-step 最终累计 RMSE |
 |---|---:|
-| Baseline LSTM | 11.80 |
-| PINN LSTM | 30.94 |
-| Refined SS LSTM | 15.94 |
-| Transformer | 13.49 |
-| Hybrid LSTM | 15.19 |
-| **Ultimate Hybrid** | **11.66** |
+| Baseline LSTM | 15.26 |
+| PINN LSTM | 477.29 |
+| Refined SS LSTM | 15.16 |
+| Transformer | 23.25 |
+| Hybrid LSTM | 78.42 |
+| **Ultimate Hybrid** | **14.42** |
 
-Ultimate Hybrid 在所有高级架构中取得最低最终累计 RMSE，说明物理基底、残差学习、Transformer 序列建模、PINN 约束和 refined scheduled sampling 的组合能更好地抑制长期 rollout 发散。
-
-## 参考实现说明
-
-原 Python 脚本和 notebook 保留在仓库中作为实现迁移的参考材料与历史溯源，但本分支的主要运行入口是 MATLAB：
-
-```text
-run_all_matlab.m
-```
+Ultimate Hybrid 在高级架构对比中取得最低最终累计 RMSE。结果说明，物理基础预测、残差学习、Transformer 序列建模、PINN 约束和 refined scheduled sampling 的组合能更好地抑制长期 rollout 发散。

@@ -1,6 +1,5 @@
 function generateReportTablesMatlab(projectRoot)
 %GENERATEREPORTTABLESMATLAB Generate LaTeX table fragments from MATLAB CSVs.
-% This is the MATLAB counterpart of scripts/generate_report_tables.py.
 
 resultsDir = fullfile(projectRoot, "results");
 outFile = fullfile(resultsDir, "generated_report_tables.tex");

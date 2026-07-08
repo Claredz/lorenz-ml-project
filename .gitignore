@@ -1,4 +1,4 @@
-# Python
+# Bytecode and virtual environments
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -6,7 +6,7 @@ __pycache__/
 venv/
 env/
 
-# Jupyter
+# Notebook checkpoints
 .ipynb_checkpoints/
 
 # LaTeX build artifacts
