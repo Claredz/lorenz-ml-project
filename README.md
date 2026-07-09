@@ -1,6 +1,6 @@
 # 基于 MATLAB 的高维混沌系统长期预测建模
 
-- **课程名称：** 人工智能导论
+- **课程名称：** MATLAB及应用（强）
 - **组长：** 钟兴涛（25120617）
 - **组员：** 唐亦明（25120638）、戴云天（25120636）、任宇航（25120699）、黄宇轩（25120619）
 
@@ -31,7 +31,7 @@ matlab -batch "run_all_matlab"
 matlab -batch "run_all_matlab('smoke')"
 ```
 
-生成带课程封面的最终论文：
+生成基于 Word 模板封面的最终论文：
 
 ```bash
 matlab -batch "build_final_pdf"
@@ -42,7 +42,10 @@ matlab -batch "build_final_pdf"
 - `results/*.csv`：Lorenz-63 指标、rollout、horizon 与 hybrid 结果；
 - `results/advanced/*.csv`：Lorenz-96 高级模型汇总与各模型 rollout 结果；
 - `figures/*.png`：论文图像；
-- `report.pdf`：最终论文 PDF。
+- `cover_filled.docx`：填写后的 Word 封面；
+- `cover.pdf`：由 Word 模板第一页导出的封面 PDF；
+- `report_body.pdf`：LaTeX 编译得到的正文 PDF；
+- `report.pdf`：封面与正文合并后的最终论文 PDF。
 
 ## 文件结构
 

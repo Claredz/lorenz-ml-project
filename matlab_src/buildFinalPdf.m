@@ -1,6 +1,6 @@
 function buildFinalPdf(projectRoot)
-%BUILDFINALPDF Compile report body, create a course cover, and prepend it.
-% Requires xelatex in PATH. The generated final PDF is report.pdf.
+%BUILDFINALPDF Compile report body, export the Word-template cover, and merge.
+% Requires xelatex and Microsoft Word automation. The generated final PDF is report.pdf.
 
 if nargin < 1
     projectRoot = fileparts(fileparts(mfilename('fullpath')));
@@ -18,8 +18,11 @@ runCommand('xelatex -interaction=nonstopmode report.tex');
 runCommand('xelatex -interaction=nonstopmode report.tex');
 movefile('report.pdf', 'report_body.pdf', 'f');
 
-writeCoverTex(projectRoot);
-runCommand('xelatex -interaction=nonstopmode cover.tex');
+templatePath = fullfile(projectRoot, 'matlab', '2026', '实习论文模板-评分2026 (1).docx');
+coverDocxPath = fullfile(projectRoot, 'cover_filled.docx');
+coverPdfPath = fullfile(projectRoot, 'cover.pdf');
+createCoverFromWordTemplate(templatePath, coverDocxPath, coverPdfPath);
+
 writeMergeTex(projectRoot);
 runCommand('xelatex -interaction=nonstopmode merge_report.tex');
 movefile('merge_report.pdf', 'report.pdf', 'f');
@@ -33,37 +36,85 @@ if status ~= 0
 end
 end
 
-function writeCoverTex(projectRoot)
-content = [
-"\documentclass[UTF8,a4paper,12pt]{ctexart}" newline ...
-"\usepackage{geometry}" newline ...
-"\geometry{left=2.8cm,right=2.8cm,top=2.8cm,bottom=2.8cm}" newline ...
-"\pagestyle{empty}" newline ...
-"\begin{document}" newline ...
-"\begin{center}" newline ...
-" \vspace*{0.1cm}" newline ...
-"{\Large 评分：\underline{\hspace{4cm}}}\hfill" newline ...
-"\vspace{0.75cm}" newline ...
-"{\Huge\bfseries SHANGHAI UNIVERSITY\\[0.45cm]}" newline ...
-"{\zihao{1}\bfseries 课程论文\\[0.25cm]}" newline ...
-"{\Large COURSE PAPER\\[1.05cm]}" newline ...
-"{\zihao{2}\bfseries \parbox{0.82\textwidth}{\centering 基于 MATLAB 的高维混沌系统长期预测建模}\\[1.15cm]}" newline ...
-"\end{center}" newline ...
-"\zihao{4}" newline ...
-" \renewcommand{\arraystretch}{1.18}" newline ...
-"\begin{tabular}{rl}" newline ...
-"课程名称： & 人工智能导论 \\[0.28cm]" newline ...
-"组\quad 长： & 钟兴涛\quad 学号：25120617 \\[0.28cm]" newline ...
-"组\quad 员： & 唐亦明\quad 学号：25120638 \\[0.20cm]" newline ...
-"          & 戴云天\quad 学号：25120636 \\[0.20cm]" newline ...
-"          & 任宇航\quad 学号：25120699 \\[0.20cm]" newline ...
-"          & 黄宇轩\quad 学号：25120619 \\[0.28cm]" newline ...
-"打印日期： & \today \\[0.28cm]" newline ...
-"教师评分： & \underline{\hspace{5cm}} \\[0.28cm]" newline ...
-"小组论文分： & \underline{\hspace{5cm}}" newline ...
-"\end{tabular}" newline ...
-"\end{document}" newline];
-writeText(fullfile(projectRoot, 'cover.tex'), content);
+function createCoverFromWordTemplate(templatePath, coverDocxPath, coverPdfPath)
+if ~isfile(templatePath)
+    error('Word cover template not found: %s', templatePath);
+end
+if ~ispc
+    error('Word cover export requires Microsoft Word automation on Windows.');
+end
+
+word = [];
+doc = [];
+try
+    word = actxserver('Word.Application');
+    word.Visible = false;
+    word.DisplayAlerts = 0;
+    doc = word.Documents.Open(char(templatePath), false, false);
+
+    setParagraphText(doc, 7, ['基于 MATLAB 的高维混沌' char(11) '系统长期预测建模']);
+    setParagraphText(doc, 9, '学    院     钱伟长学院');
+    setParagraphText(doc, 10, '专    业    数学与应用数学');
+    setParagraphText(doc, 11, '学号姓名   25120617 钟兴涛');
+    setParagraphText(doc, 12, '学号姓名      25120638 唐亦明');
+    setParagraphText(doc, 13, '学号姓名   25120636 戴云天');
+    setParagraphText(doc, 14, '学号姓名      25120699 任宇航  25120619 黄宇轩');
+    setParagraphText(doc, 15, '课    程  MATLAB及应用（强）');
+    setParagraphText(doc, 16, ['打印日期  ' char(datetime('today', 'Format', 'yyyy年M月d日'))]);
+    formatCoverParagraph(doc, 7, 24, true);
+    formatCoverParagraph(doc, 14, 14, false);
+    for i = [9, 10, 11, 12, 13, 15, 16]
+        formatCoverParagraph(doc, i, [], false);
+    end
+
+    doc.SaveAs2(char(coverDocxPath), 16);
+    doc.ExportAsFixedFormat(char(coverPdfPath), 17, false, 0, 3, 1, 1);
+    doc.Close(false);
+    word.Quit();
+catch err
+    tryCloseWord(doc, word);
+    error('Unable to fill and export Word cover template: %s', err.message);
+end
+end
+
+function setParagraphText(doc, paragraphIndex, text)
+range = doc.Paragraphs.Item(paragraphIndex).Range;
+range.End = range.End - 1;
+range.Text = char(text);
+end
+
+function formatCoverParagraph(doc, paragraphIndex, pointSize, centerText)
+range = doc.Paragraphs.Item(paragraphIndex).Range;
+range.End = range.End - 1;
+try
+    range.ParagraphFormat.AddSpaceBetweenFarEastAndAlpha = false;
+    range.ParagraphFormat.AddSpaceBetweenFarEastAndDigit = false;
+catch
+end
+if ~isempty(pointSize)
+    range.Font.Size = pointSize;
+end
+if centerText
+    range.ParagraphFormat.Alignment = 1;
+    range.ParagraphFormat.LeftIndent = 0;
+    range.ParagraphFormat.RightIndent = 0;
+    range.ParagraphFormat.FirstLineIndent = 0;
+end
+end
+
+function tryCloseWord(doc, word)
+try
+    if ~isempty(doc)
+        doc.Close(false);
+    end
+catch
+end
+try
+    if ~isempty(word)
+        word.Quit();
+    end
+catch
+end
 end
 
 function writeMergeTex(projectRoot)

@@ -46,18 +46,16 @@
 \newcommand{\rmse}{\mathrm{RMSE}}
 \newcommand{\crmse}{\mathrm{CRMSE}}
 \newcommand{\mse}{\mathrm{MSE}}
+\newcommand{\courseName}{MATLAB及应用（强）}
 
 \title{\heiti 基于 MATLAB 的高维混沌系统长期预测建模\\
 \large 以 Lorenz-63 与 Lorenz-96 系统为例}
 \author{钟兴涛（组长）\quad 唐亦明 \quad 戴云天 \quad 任宇航 \quad 黄宇轩\\
 学号：25120617 \quad 25120638 \quad 25120636 \quad 25120699 \quad 25120619\\
-课程名称：人工智能导论}
+课程名称：\courseName}
 \date{\today}
 
 \begin{document}
-
-\maketitle
-\thispagestyle{empty}
 
 \begin{abstract}
 本文研究混沌动力系统的长期多步预测问题。我们基于 MATLAB 实现完整实验流程，先用 Lorenz-63 验证普通监督学习可拟合短期状态转移但难以稳定 rollout，再构建 10 维 Lorenz-96 数据集并比较 Baseline LSTM、PINN LSTM、Transformer、Hybrid LSTM 与 Ultimate Hybrid。实验以 500-step 累计 RMSE 为核心指标。结果表明，单步精度不能保证长期稳定；融合不完美 RK4 物理求解器、Transformer 残差模型、PINN 损失和 refined scheduled sampling 的 Ultimate Hybrid 取得最低最终累计 RMSE 14.42。本文说明，在高维混沌预测中，机器学习更适合作为物理模型的残差修正器。
